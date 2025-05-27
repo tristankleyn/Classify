@@ -1,3 +1,3 @@
-### ClassifyStuff: easily train, test, and apply acoustic classifier models in Quarto notebooks
+### ClassifyStuff: easily train and test acoustic classifier models
 
 ##

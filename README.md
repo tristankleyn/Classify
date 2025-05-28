@@ -21,5 +21,5 @@ This repository contains a Quarto notebook designed to facilitate training and t
 
 ### Requirements
 - R
-- RStudio
+- RStudio or other IDE
   

@@ -2,7 +2,7 @@
 🐬  🔊  🦜  🔊  🐒  🔊  🐦  🔊  🦇  🔊  🐳  🔊  🐠  🔊  🐞  🔊  🦅  🔊  🐘  🔊  🐬
 ##
 
-This repository contains a Quarto notebook designed to facilitate training and testing of machine learning acoustic classifier models to classify acoustic data to preset labels. 
+This repository contains a Quarto notebook designed to facilitate training and testing of machine learning acoustic classifier models to classify acoustic data to preset labels. Currently designed specifically for dealing with data exported from [PAMGuard](https://www.pamguard.org/).
 
 ### ClassifyStuff/
 

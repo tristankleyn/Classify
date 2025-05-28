@@ -1,3 +1,4 @@
-### ClassifyStuff: easily train and test acoustic classifier models
+### ClassifyStuff: train and test acoustic classifier models
 
+🐬 🔊 🦜 🔊 🐒 🔊 🐦 🔊 🦇 🔊 🐳 🔊 🐠 🔊 🐞 🔊 🦅 🔊 🐘 🔊 🐬
 ##

@@ -16,6 +16,8 @@ This repository contains a Quarto notebook designed to facilitate training and t
 > #### └── [PARAMETERS.md](https://github.com/tristankleyn/ClassifyStuff/blob/master/PARAMETERS.md)
 > Appendix of adjustable parameters in Classify.qmd
 
+##
+
 ### Requirements
 - R
 - RStudio

@@ -1,16 +1,11 @@
-library(data.table)
-library(randomForest)
-library(ggplot2)
-library(scales)
-library(dplyr)
-library(tidyr)
-
-library(data.table)
-library(randomForest)
-library(ggplot2)
-library(scales)
-library(dplyr)
-library(tidyr)
+suppressWarnings(library(data.table))
+suppressWarnings(library(randomForest))
+suppressWarnings(library(ggplot2))
+suppressWarnings(library(scales))
+suppressWarnings(library(dplyr))
+suppressWarnings(library(tidyr))
+suppressWarnings(library(igraph))
+suppressWarnings(library(ggraph))
 
 
 summData <- function(data, hierarchy) {
@@ -59,58 +54,44 @@ summVars <- function(data, hierarchy, vars) {
   print(output_dt)
 }
 
-loadDataFromHier <- function(root_path, hierarchy_levels, startVar, endVar, omitVars=c(), filterVarsMin=c(), filterVarsMax=c(), file_pattern='RoccaContourStats', file_type='csv', show_output=TRUE) {
+loadDataFromHier <- function(root_path, startVar, endVar, vocType, from_folders=FALSE, levels=NULL, omitVars=c(), filterVarsMin=c(), filterVarsMax=c(), file_pattern='RoccaContourStats', file_type='csv', show_output=TRUE) {
   all_data <- list()
-  
-  # Recursive function to traverse levels
-  process_level <- function(current_path, level_index, current_level_names = list(), accumulated_data = list()) {
-
-    if (level_index > length(hierarchy_levels)) {
-      files_to_load <- list.files(
-        current_path,
-        pattern = sprintf("%s.*\\.%s$", file_pattern, file_type),
-        full.names = TRUE
-      )
-
-      for (file_path in files_to_load) {
-        tryCatch({
-          current_data <- read.csv(file_path)
-          ind1 <- which(names(current_data) == startVar)
-          ind2 <- which(names(current_data) == endVar)
-          current_data <- current_data[,ind1:ind2]
-          if (nrow(current_data) > 0) {
-            for (i in seq_along(hierarchy_levels)) {
-              if (i <= length(current_level_names)) {
-                current_data[[hierarchy_levels[i]]] <- current_level_names[[i]]
-              }
-            }
-            accumulated_data[[length(accumulated_data) + 1]] <- current_data # Append to the passed list
-          }
-        }, error = function(e) {
-          cat(paste("Error reading file:", file_path, "\n"))
-          print(e)
-        })
-      }
-      return(accumulated_data) # Return the modified list
-    }
-    
-    sub_dirs <- list.dirs(current_path, full.names = TRUE, recursive = FALSE)
-
-    for (dir_path in sub_dirs) {
-      current_name <- basename(dir_path)
-      accumulated_data <- process_level(dir_path, level_index + 1, c(current_level_names, current_name), accumulated_data) # Update the list
-    }
-    return(accumulated_data) # Return the accumulated data from this level
+  if (vocType %in% c('whistle', 'whistles', 'Whistles', 'Whistle')) {
+    startVar <- 'FREQMAX'
+    endVar <- 'STEPDUR'
+  } else if (vocType %in% c('click', 'clicks', 'Click', 'Clicks')) {
+    startVar <- 'DURATION'
+    endVar <- 'VARIANCETIMEZC'
   }
   
-  all_data <- process_level(root_path, 1, accumulated_data = list()) # Initialize and capture the returned list
-  
-  if (length(all_data) > 0) {
-    meta_df <- do.call(rbind, all_data)
+  if (from_folders == FALSE) {
+    meta_df <- data.frame()
+    dirfiles <- dir(root_path)
+    hierarchy_levels <- c('KnownSpecies', 'EncounterID')
+    for (file in dirfiles) {
+      if (grepl('RoccaContourStats', file) & grepl('.csv', file)) {
+        x <- read.csv(sprintf('%s/%s', root_path, file))
+        if (vocType %in% c('whistle', 'whistles', 'Whistles', 'Whistle')) {
+          x <- subset(x, FREQMAX > 0 & FREQPEAK == 0)
+        } else if (vocType %in% c('click', 'clicks', 'Click', 'Clicks')) {
+          x <- subset(x, FREQMAX == 0 & FREQPEAK != 0)
+        }
+        meta_df <- rbind(meta_df, x)
+        rownames(meta_df) <- 1:nrow(meta_df)
+      }
+    }
+    
     ind1 <- which(names(meta_df)==startVar)
     ind2 <- which(names(meta_df)==endVar)
+    if (vocType %in% c('click', 'clicks', 'Click', 'Clicks')) {
+      omitVars <- append(omitVars, names(meta_df[ind1:ind2])[!names(meta_df[ind1:ind2]) %in% c('DURATION', 'FREQCENTER')])
+      omitVars <- omitVars[!omitVars %in% c('FREQPEAK', 'BW3DB', 'BW3DBLOW', 'BW3DBHIGH','BW10DB', 'BW10DBLOW', 'BW10DBHIGH', 
+                                            'NCROSSINGS', 'SWEEPRATE', 'MEANTIMEZC', 'MEDIANTIMEZC', 'VARIANCETIMEZC')]
+    }
+    
     vars <- names(meta_df)[ind1:ind2]
     vars <- vars[!vars %in% omitVars]
+    
     for (var in names(filterVarsMin)) {
       val <- filterVarsMin[[var]]
       meta_df <- subset(meta_df, meta_df[[var]] >= val)
@@ -126,14 +107,101 @@ loadDataFromHier <- function(root_path, hierarchy_levels, startVar, endVar, omit
       summVars(meta_df, hierarchy_levels, vars)
       summData(meta_df, hierarchy_levels)
     }
-    original <- nrow(meta_df)
-    meta_df <- meta_df %>% drop_na()
-    dropped_rows <- original - nrow(meta_df)
+    
+    meta_df$species <- meta_df$KnownSpecies
+    meta_df$encounter <- meta_df$EncounterID
     information <- list(meta_df, vars)
     return(information)
+    
   } else {
-    cat("No matching files found.\n")
-    return(NULL)
+    hierarchy_levels <- levels
+
+    process_level <- function(current_path, level_index, current_level_names = list(), accumulated_data = list()) {
+      if (level_index > length(hierarchy_levels)) {
+        files_to_load <- list.files(
+          current_path,
+          pattern = sprintf("%s.*\\.%s$", file_pattern, file_type),
+          full.names = TRUE
+        )
+        
+        
+        for (file_path in files_to_load) {
+          tryCatch({
+            current_data <- read.csv(file_path)
+            if (vocType %in% c('whistle', 'whistles', 'Whistles', 'Whistle')) {
+              current_data <- subset(current_data, FREQMAX != 0 & FREQPEAK == 0)
+            } else if (vocType %in% c('click', 'clicks', 'Click', 'Clicks')) {
+              current_data <- subset(current_data, FREQMAX == 0 & FREQPEAK != 0)
+            }
+            
+            ind1 <- which(names(current_data) == startVar)
+            ind2 <- which(names(current_data) == endVar)
+            if (vocType %in% c('click', 'clicks', 'Click', 'Clicks')) {
+              omitVars <- append(omitVars, names(current_data[ind1:ind2])[!names(current_data[ind1:ind2]) %in% c('DURATION', 'FREQCENTER')])
+              a <- which(names(meta_df) == 'FREQPEAK')
+              b <- which(names(meta_df) == 'VARIANCETIMEZC')
+              omitVars <- omitVars[!omitVars %in% names(meta_df)[a:b]]
+            }
+            
+            current_data <- current_data[,ind1:ind2]
+            if (nrow(current_data) > 0) {
+              for (i in seq_along(hierarchy_levels)) {
+                if (i <= length(current_level_names)) {
+                  current_data[[hierarchy_levels[i]]] <- current_level_names[[i]]
+                }
+              }
+              accumulated_data[[length(accumulated_data) + 1]] <- current_data # Append to the passed list
+            }
+          }, error = function(e) {
+            cat(paste("Error reading file:", file_path, "\n"))
+            print(e)
+          })
+        }
+        return(accumulated_data) # Return the modified list
+      }
+      
+      sub_dirs <- list.dirs(current_path, full.names = TRUE, recursive = FALSE)
+      
+      for (dir_path in sub_dirs) {
+        current_name <- basename(dir_path)
+        accumulated_data <- process_level(dir_path, level_index + 1, c(current_level_names, current_name), accumulated_data) # Update the list
+      }
+      return(accumulated_data) # Return the accumulated data from this level
+    }
+    
+    all_data <- process_level(root_path, 1, accumulated_data = list()) # Initialize and capture the returned list
+    
+    if (length(all_data) > 0) {
+      meta_df <- do.call(rbind, all_data)
+      ind1 <- which(names(meta_df)==startVar)
+      ind2 <- which(names(meta_df)==endVar)
+      vars <- names(meta_df)[ind1:ind2]
+      vars <- vars[!vars %in% omitVars]
+      for (var in names(filterVarsMin)) {
+        val <- filterVarsMin[[var]]
+        meta_df <- subset(meta_df, meta_df[[var]] >= val)
+        rownames(meta_df) <- 1:nrow(meta_df)
+      }
+      for (var in names(filterVarsMax)) {
+        val <- filterVarsMax[[var]]
+        meta_df <- subset(meta_df, meta_df[[var]] <= val)
+        rownames(meta_df) <- 1:nrow(meta_df)
+      }
+      
+      if (show_output == TRUE) {
+        summVars(meta_df, hierarchy_levels, vars)
+        summData(meta_df, hierarchy_levels)
+      }
+      
+      original <- nrow(meta_df)
+      meta_df <- meta_df %>% drop_na()
+      dropped_rows <- original - nrow(meta_df)
+      information <- list(meta_df, vars)
+      return(information)
+    } else {
+      cat("No matching files found.\n")
+      return(NULL)
+    }
   }
 
 }
@@ -171,9 +239,10 @@ getPred <- function(x) {
   return(labels[which.max(x)])
 }
 
-classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omit=c(), prune=0, minScore=0, nMax=1000, nTrees=500, mtry=NULL, verbose=TRUE) {
+classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omit=c(), prune=0, minScore=0, nMax=1000, nTrees=500, mtry=NULL, node_size=1, verbose=TRUE) {
   results <- data.frame()
   allpreds <- data.frame()
+  data$uid <- 1:nrow(data)
   for (var in names(omit)) {
     items <- unlist(omit[[var]])
     data <- subset(data, !data[[var]] %in% items)
@@ -185,9 +254,12 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
   
   all_labels <- unique(data[[targetVar]])[order(unique(data[[targetVar]]))]
   all_groups <- unique(data[[groupVar]])[order(unique(data[[groupVar]]))]
+
   if (length(select_groups) > 0) {
     all_groups <- select_groups
   }
+  
+  cat(sprintf('Classifying %s groups...\n', length(all_groups)))
   for (group in all_groups) {
     xtest <- subset(data, data[[groupVar]]==group)
     xtrain <- subset(data, data[[groupVar]]!=group)
@@ -202,14 +274,18 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
                         data = xtrain,
                         ntree = nTrees,
                         mtry = mtry, 
+                        nodesize = node_size,
                         strata = as.factor(xtrain[[targetVar]]),
                         sampsize = sampsizes,
                         na.action = na.roughfix)
       
       predFrame <- predict(m, xtest, type='prob')
+      testUID <- xtest$uid
+      testUID <- testUID[apply(predFrame, 1, getScore) >= minScore]
       predFrame <- predFrame[apply(predFrame, 1, getScore) >= minScore,]
+      xtest <- xtest[xtest$uid %in% testUID, ]
 
-      if (!is.null(dim(predFrame))) {
+      if (!is.null(dim(predFrame)) & nrow(xtest) > 0) {
         probs <- colMeans(predFrame)
         predFrame <- data.frame(predFrame)
         predList <- unlist(apply(predFrame, 1, getPred))
@@ -218,8 +294,7 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
         predFrame$score <- scoreList
         predFrame[[targetVar]] <- unique(xtest[[targetVar]])[1]
         predFrame[[groupVar]] <- group
-        print(names(predFrame))
-        print(names(allpreds))
+        predFrame <- cbind(predFrame, xtest)
         allpreds <- rbind(allpreds, predFrame)
         
         pred <- all_labels[which.max(probs)]
@@ -262,7 +337,8 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
                     mtry = mtry, 
                     strata = as.factor(xtrain[[targetVar]]),
                     sampsize = sampsizes,
-                    na.action = na.roughfix)
+                    na.action = na.roughfix,
+                    importance=TRUE)
   
   
   rownames(allpreds) <- 1:nrow(allpreds)
@@ -326,7 +402,7 @@ summResults <- function(df, targetVar, minScore=0, digits = 2) {
   cat(sprintf('Highest: %s (%s)', round(highAcc, 3), highGroup))
 }
 
-plotResults <- function(results, targetVar, thrMax=0.10, point_size=1, show_plots=TRUE, 
+plotResults <- function(results, model, targetVar, show_vars=15, thrMax=0.10, point_size=1, show_plots=TRUE, 
                         axistitle_fontsize=14, legend_fontsize=12, ticklabel_fontsize=10) {
   thrList <- seq(0, thrMax, 0.01)
   RetAcc <- data.frame()
@@ -337,13 +413,13 @@ plotResults <- function(results, targetVar, thrMax=0.10, point_size=1, show_plot
       subsub <- subset(sub, sub[[targetVar]] == group)
       group_accs <- append(group_accs, sum(subsub$pred == subsub[[targetVar]])/nrow(subsub))
     }
-    row <- data.frame(label='ALL', minScore=thr, retention=(1-(nrow(sub)/nrow(results))), ovr_acc=sum(sub$pred==sub[[targetVar]])/nrow(sub), mean_acc=mean(group_accs))
+    row <- data.frame(label='ALL', minScore=thr, retention=(100*((nrow(sub)/nrow(results)))), ovr_acc=(100*(sum(sub$pred==sub[[targetVar]])/nrow(sub))), mean_acc=(100*mean(group_accs)))
     RetAcc <- rbind(RetAcc, row)
     
     for (lab in unique(sub[[targetVar]])) {
       subsub <- subset(sub, sub[[targetVar]]==lab)
       labAll <- subset(results, results[[targetVar]]==lab)
-      row <- data.frame(label=lab, minScore=thr, retention=(1-(nrow(subsub)/nrow(labAll))), ovr_acc=sum(subsub$pred==subsub[[targetVar]])/nrow(subsub), mean_acc=sum(subsub$pred==subsub[[targetVar]])/nrow(subsub))
+      row <- data.frame(label=lab, minScore=thr, retention=100*((nrow(subsub)/nrow(labAll))), ovr_acc=100*(sum(subsub$pred==subsub[[targetVar]])/nrow(subsub)), mean_acc=100*(sum(subsub$pred==subsub[[targetVar]])/nrow(subsub)))
       RetAcc <- rbind(RetAcc, row)
     }
   }
@@ -368,14 +444,21 @@ plotResults <- function(results, targetVar, thrMax=0.10, point_size=1, show_plot
   
   subALL <- subset(RetAcc, label == 'ALL')
   
-  p1 <- ggplot(data = subALL) +
+  p1 <- varImpPlot(model, 
+             type = 2, 
+             main = "Variable Importance \n(Mean Decrease Gini)", 
+             sort = TRUE,
+             n.var = show_vars, # Show top 10 variables
+             col = "steelblue") 
+  
+  p2 <- ggplot(data = subALL) +
     theme_bw() +
     geom_line(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy')) +
     geom_point(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy')) +
     geom_line(aes(x = minScore, y = mean_acc, colour = 'Mean accuracy')) +
     geom_point(aes(x = minScore, y = mean_acc, colour = 'Mean accuracy')) +
-    geom_line(aes(x = minScore, y = (1-retention), colour = '% groups classified')) +
-    geom_point(aes(x = minScore, y = (1-retention), colour = '% groups classified')) +
+    geom_line(aes(x = minScore, y = retention, colour = '% groups classified')) +
+    geom_point(aes(x = minScore, y = retention, colour = '% groups classified')) +
     scale_colour_manual(
       name = NULL,
       values = c('Overall accuracy' = 'darkgreen',
@@ -384,7 +467,7 @@ plotResults <- function(results, targetVar, thrMax=0.10, point_size=1, show_plot
     ) +
     xlab('Minimum prediction score') +
     ylab(NULL) + 
-    ylim(c(0,1)) +
+    ylim(c(0,100)) +
     theme(
       axis.title.x = element_text(face = "bold", margin = margin(t = 10), size=axistitle_fontsize),
       axis.title.y = element_text(face = "bold", margin = margin(r = 10), size=axistitle_fontsize),
@@ -396,15 +479,15 @@ plotResults <- function(results, targetVar, thrMax=0.10, point_size=1, show_plot
       legend.text = element_text(size = legend_fontsize)
     )
   
-  p2 <- ggplot(data = RetAcc, aes(x = retention, y = ovr_acc, group = label, colour = label, size = label, alpha = label)) +
+  p3 <- ggplot(data = RetAcc, aes(x = retention, y = ovr_acc, group = label, colour = label, size = label, alpha = label)) +
     theme_bw() +
     geom_point(pch=16) +
     scale_color_manual(values = label_colors) +
     scale_size_manual(values = label_sizes) +
     scale_alpha_manual(values = label_alphas) +
-    xlim(0,1) +
-    ylim(0,1) +
-    xlab('% classifications discarded') +
+    xlim(0,100) +
+    ylim(0,100) +
+    xlab('% groups classified') +
     ylab('% of groups classified correctly') +
     theme(
       legend.position = "top",
@@ -417,10 +500,10 @@ plotResults <- function(results, targetVar, thrMax=0.10, point_size=1, show_plot
     ) +
     guides(colour = guide_legend(nrow = 1)) # Forces labels to be in a single row
   
-  info <- list(plotOverall=p1, plotGroups=p2, df=RetAcc)
+  info <- list(varImportance=p1, plotOverall=p2, plotGroups=p3, df=RetAcc)
   if (show_plots == TRUE) {
+    print(p3)
     print(p2)
-    print(p1)
   }
   
   return(info)
@@ -534,7 +617,10 @@ combineResults <- function(dataSelect, group, targetVar, groupVar, fillValue='no
       targetLabel <- 'Unk'
     }
     
-    nList[[sprintf('%s_n', label)]] <- sub$n[1]
+    if ('n' %in% names(sub)) {
+      nList[[sprintf('%s_n', label)]] <- sub$n[1]
+    }
+    
     ind <- which(names(sub) == 'score')+1
     subPreds <- sub[,ind:ncol(sub)]
     colnames(subPreds) <- paste0(sprintf("%s_", label), colnames(subPreds))
@@ -543,7 +629,12 @@ combineResults <- function(dataSelect, group, targetVar, groupVar, fillValue='no
   
   nList <- as.data.frame(nList)
   ind <- which(names(row)==groupVar)
-  row <- cbind(row[,1:ind], nList, row[,(ind+1):ncol(row)])
+  if ('n' %in% names(data)) {
+    row <- cbind(row[,1:ind], nList, row[,(ind+1):ncol(row)])
+  } else {
+    row <- cbind(row[,1:ind], row[,(ind+1):ncol(row)])
+  }
+  
   row[[targetVar]] <- targetLabel
   rownames(row) <- c(1)
   
@@ -657,3 +748,129 @@ exportClassificationResults <- function(groupPreds=NULL, allPreds=NULL, plot_inf
   }
 }
 
+imputeData <- function(data, targetVar, groupVar, impLim=2, verbose=FALSE) {
+  fill_value <- 'random_sample' # Or 'mean' if you want to switch back
+  count <- 1 # Initialize count if you intend to use it elsewhere
+  
+  # Get unique species levels
+  unique_species <- unique(data[[targetVar]])
+  
+  # Specify the VAR columns for clicks and whistles
+  vars_clicks <- paste0("VAR", 1:5)[paste0("VAR", 1:5) %in% names(data)]
+  vars_whistles <- paste0("VAR", 6:12)[paste0("VAR", 6:12) %in% names(data)]
+  
+  # --- Iterate through the rows of data and impute ---
+  for (i in 1:nrow(data)) {
+    current_species <- data[[targetVar]][i]
+    current_enc <- data[[groupVar]][i]
+
+    # --- Impute for zero clicks ---
+    if (data$clicks[i] < impLim) {
+      species_non_zero_clicks <- data[data[[targetVar]] == current_species & data[[groupVar]] == current_enc & data$clicks != 0, vars_clicks]
+      num_non_zero <- nrow(species_non_zero_clicks)
+      if (num_non_zero >= 1) {
+        # Randomly select one row of non-zero values
+        random_index <- sample(1:num_non_zero, 1)
+        imputed_values <- species_non_zero_clicks[random_index, ]
+        data[i, vars_clicks] <- imputed_values
+      } else {
+        if (verbose == TRUE) {
+          cat(paste("Warning: No non-zero clicks found for species:", current_species, "at row", i, ". Skipping imputation for VAR1-VAR5.\n"))
+        }
+      }
+    }
+    
+    # --- Impute for zero whistles ---
+    if (data$whistles[i] == impLim) {
+      species_non_zero_whistles <- data[data[[targetVar]] == current_species & data[[groupVar]] == current_enc & data$whistles != 0, vars_whistles]
+      num_non_zero <- nrow(species_non_zero_whistles)
+      if (num_non_zero >= 1) {
+        # Randomly select one row of non-zero values
+        random_index <- sample(1:num_non_zero, 1)
+        imputed_values <- species_non_zero_whistles[random_index, ]
+        data[i, vars_whistles] <- imputed_values
+      } else {
+        if (verbose == TRUE) {
+          cat(paste("Warning: No non-zero whistles found for species:", current_species, "at row", i, ". Skipping imputation for VAR6-VAR12.\n"))
+        }
+      }
+    }
+  }
+  return(data)
+}
+
+
+showTree <- function(m, tree_num=1, nodeSize=4, nodeText=2, labelText=2) {
+  # Extract a single tree (e.g., the first tree)
+  tree_info <- getTree(m, k = tree_num, labelVar = TRUE)
+  
+  # Initialize data frames for nodes and edges
+  nodes_df <- data.frame(
+    id = 1:nrow(tree_info),
+    label = character(nrow(tree_info)),
+    is_terminal = tree_info$status == -1,
+    prediction = tree_info$prediction
+  )
+  
+  edges_df <- data.frame(
+    from = integer(),
+    to = integer(),
+    label = character()
+  )
+  
+  # Populate nodes and edges
+  for (i in 1:nrow(tree_info)) {
+    node <- tree_info[i, ]
+    
+    # Node label based on whether it's a terminal node or a split node
+    if (node$status == -1) { # Terminal node
+      nodes_df$label[i] <- paste0("Pred: ", node$prediction)
+    } else { # Split node
+      nodes_df$label[i] <- paste0(node$`split var`, " <= ", round(node$`split point`, 2))
+      
+      # Add edges
+      if (node$`left daughter` > 0) {
+        edges_df <- rbind(edges_df, data.frame(
+          from = i,
+          to = node$`left daughter`,
+          label = "True" # Or 'Yes', '<= SplitPoint'
+        ))
+      }
+      if (node$`right daughter` > 0) {
+        edges_df <- rbind(edges_df, data.frame(
+          from = i,
+          to = node$`right daughter`,
+          label = "False" # Or 'No', '> SplitPoint'
+        ))
+      }
+    }
+  }
+  
+  # Remove prediction for non-terminal nodes (they don't have a final prediction)
+  nodes_df$prediction[!nodes_df$is_terminal] <- NA
+  
+  
+  # Create an igraph object
+  tree_graph <- graph_from_data_frame(d = edges_df, vertices = nodes_df, directed = TRUE)
+  
+  
+  plot_tree <- ggraph(tree_graph, layout = 'tree') +
+    geom_edge_link(aes(label = label),
+                   arrow = arrow(length = unit(3, 'mm'), type = "closed"),
+                   end_cap = circle(2, 'mm'),
+                   start_cap = circle(2, 'mm'),
+                   color = "gray30",
+                   label_colour = "darkblue",
+                   label_size = labelText) +
+    geom_node_point(aes(color = is_terminal), size = nodeSize) + 
+    geom_node_text(aes(label = label), repel = TRUE, size = nodeText, bg.colour = "white", bg.r = 0.1) +
+    scale_color_manual(values = c("FALSE" = "skyblue", "TRUE" = "darkgreen")) +
+    theme_void() +
+    labs(title = paste("Decision Tree", tree_num, "from Random Forest Model")) +
+    theme(legend.position = "none") # Hide legend for simplicity
+  
+  print(plot_tree)
+  return(plot_tree)
+}
+
+cat('\u2713 Done loading functions')

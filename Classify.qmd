@@ -32,7 +32,7 @@ The first steps for this analysis are to source the functions needed for the ana
 **Run the cell below to source required functions:**
 
 ```{r}
-source('Classify_functions.R')
+suppressWarnings(source('Classify_functions.R'))
 ```
 
 Your .csv formatted data should be structured in a hierarchy of folders, where levels of the hierarchy represent different types of information such as location, species, year, etc. The example below shows a hierarchical data structure of folders organized by species, location, and recording. The .csv data should be kept in the lowest level of the structure (e.g. recording).
@@ -79,7 +79,9 @@ Before reading in your data using the *loadDataFromHier()* function in the cell 
 
 -   **root_directory** \| folder where your data is located. [Example:]{.underline} "C:/Users/Bob/Desktop/Data"
 
--   **hierarchy** \| vector of category names describing your hierarchical data structure. Enclose names in quotation marks or apostrophes. [Example:]{.underline} c('species', 'location', 'encounter').
+-   **from_folders** \| set as TRUE or FALSE to indicate whether or not your .csv data is stored in a hierarchical folder structure like the example above.
+
+-   **levels** \| vector of labels for each folder level in your hierarchical structure. If **from_folders** is FALSE, this will default to using the "KnownSpecies" and "EncounterID" variables in your .csv data.
 
 -   **startVar** \| name of the first variable (in terms of column number) in your data. [Example]{.underline}: "FREQMAX"
 
@@ -96,26 +98,28 @@ Before reading in your data using the *loadDataFromHier()* function in the cell 
 This cell provides output in two different panels, which you can click between. The first shows a table of all variables identified in your data along with their average values for each category of your first hierarchical variable. The second panels provides a summary of the data loaded.
 
 ```{r}
-root_directory <- "AfricaData"
-hierarchy <- c("species", "location", "encounter", "recording")
+root_directory <- "UKData"
+from_folders <- TRUE
+levels <- c('species', 'location', 'encounter', 'recording')
 
-startVar <- 'FREQMAX'
-endVar <- 'STEPDUR'
+vocType = 'whistle'
 omitVars <- c('DCQUARTER1MEAN', 'DCQUARTER2MEAN', 'DCQUARTER3MEAN',
-              'DCQUARTER4MEAN', 'DCMEAN', 'DCSTDDEV')
+              'DCQUARTER4MEAN', 'DCMEAN', 'DCSTDDEV', 'RMSSIGNAL')
 
 filterVars_min <- list()
 filterVars_max <- list()
 
-info <- loadDataFromHier(root_directory, hierarchy, 
-                         startVar=startVar, endVar=endVar, omitVars=omitVars)
+info <- loadDataFromHier(root_directory, from_folders=from_folders, 
+                         levels=levels, vocType=vocType, omitVars=omitVars,
+                         filterVarsMin = filterVars_min,
+                         filterVarsMax = filterVars_max)
 
 allData <- info[[1]]
 variables <- info[[2]]
 
 ```
 
-## 🔎 (2) Exploring your data
+## 🔎 (2) Explore your data
 
 **Customize and run the cell below to visualize your data according to different variables.**
 
@@ -136,8 +140,8 @@ The following parameters can be adjusted:
 -   **resultsFolder** \| specific folder to save plots to. To create new folder, leave resultsFolder as NULL.
 
 ```{r}
-VARIABLE1 <- 'FREQEND'
-VARIABLE2 <- 'FREQBEG'
+VARIABLE1 <- 'FREQBEG'
+VARIABLE2 <- 'FREQEND'
 targetVar <- 'species'
 alpha = 0.5
 size = 2
@@ -169,19 +173,27 @@ dataPlot(d=allData,
 -   **omit** \| list of categories for any hierarchical level in data to exclude from classifier training and testing. [Example:]{.underline} list('species'=c('SpeciesA"), 'location'=c('Location2", "Location3"))
 
 ```{r}
+#| warning: false
+
+# CLASSIFICATION SETUP
 targetVar <- 'species'
 groupVar <- 'encounter'
-nMax <- 50
+nMax <- 25
 pruneTrain <- 0
-minScore <- 0.0
-select_groups <- c()
-omit <- list()
+minScore <- 0.02
+selectGroups <- c()
+omitGroups <- list()
 
-
+nTrees <- 500
+mTry <- NULL
+nodeSize <- 25
 
 info <- classifyData(allData, vars=variables, targetVar=targetVar, 
                      groupVar=groupVar, nMax=nMax, prune=pruneTrain, 
-                     minScore=minScore, select_groups=select_groups, omit=omit)
+                     nTrees=nTrees, mtry=mTry, node_size=nodeSize,
+                     minScore=minScore, select_groups=select_groups, 
+                     omit=omitGroups)
+
 
 groupPreds <- info$groupPreds
 allPreds <- info$allPreds
@@ -190,26 +202,55 @@ model <- info$model
 
 **Run the cell below to output a summary of your classifier training and testing.**
 
-Again, the output is shown in two panels. The first panel gives a confusion matrix table of true labels against predicted labels, where correct classifications are shown along the diagonal. The second panel gives a written summary of overall and mean classification accuracy.
+Again, the output is shown in two panels below. The first panel gives a confusion matrix table of true labels against predicted labels, where correct classifications are shown along the diagonal. The second panel gives a written summary of overall and mean classification accuracy.
 
 ```{r}
-summResults(groupPreds, targetVar=targetVar, minScore=0.01)
+summResults(groupPreds, targetVar=targetVar, minScore=0.0)
 ```
 
 **Visualize classifier performance by running the below cell.**
 
-The two output panels here provide visualizations of classifier performance. The first panel shows a scatter plot of classification accuracy against the % of predictions discarded using increasing minimum decision score thresholds. The second panel shows overall accuracy, mean accuracy, and % of predictions classified at increasing minimum decision score thresholds.
+The three output panels here show different aspect of the classification results. The first (left) panel shows variable importance in terms of Gini impurity decrease of the 15 most important variables used by the model. The second (middle) panel shows a scatter plot of classification accuracy against the % of predictions discarded using increasing minimum decision score thresholds. The third (right) panel shows overall accuracy, mean accuracy, and % of predictions classified at increasing minimum decision score thresholds.
 
 ```{r}
 #| fig-height: 6
 #| fig-width: 9
-plot_info <- plotResults(groupPreds, thrMax=0.10, point_size=1, targetVar=targetVar)
 
+plot_info <- plotResults(groupPreds, model=model,
+                         thrMax=0.10, point_size=1, targetVar=targetVar)
+
+```
+
+```{r}
+#| fig-width: 30      
+#| fig-height: 15    
+#| out-width: "100%" 
+#| out-height: "auto" 
+
+plot_tree <- showTree(model, tree_num=8, 
+                      nodeSize=4, nodeText=4, labelText=4)
 ```
 
 ## 📥 (4) Export results
 
+Run the cell below to export your data, results, and figures. These will be saved to a **classificationResults** folder in the same directory as this notebook containing the following items:
+
+-   **figures** \| folder containing your classification results plots
+
+-   **classifier.rds** \| Random Forest classifier model
+
+-   **allData.csv** \| Table of individual classifications
+
+-   **allPredictions.csv** \| Table of individual classifications and their acoustic variables
+
+-   **groupPredictions.csv** \| Table of group classifications
+
 ```{r}
+figWidth <- 8
+figHeight <- 6
+figDPI <- 400
+
+
 dirName <- makeDirSysDT(create=FALSE)
 if (!dirName %in% dir()) {
   dirName <- makeDirSysDT(create=TRUE)
@@ -218,164 +259,47 @@ if (!'figures' %in% dir(dirName)) {
   dir.create(sprintf('%s/figures', dirName))
 }
 
-
-write.csv(groupPreds, sprintf('%s/groupPredictions.csv', dirName), row.names=FALSE)
-
-write.csv(allPreds, sprintf('%s/allPredictions.csv', dirName), row.names=FALSE)
-
-ggsave(sprintf('%s/figures/performanceThresholds.png', dirName), 
-       plot=plot_info$plotOverall, width=8, height=6, units="in", dpi=300)
-
-ggsave(sprintf('%s/figures/performanceGroups.png', dirName), 
-       plot=plot_info$plotGroups, width=8, height=6, units="in", dpi=300)
-
-saveRDS(model, sprintf('%s/classifier.rds', dirName))
-```
-
-```{r}
-dirSelect <- c('classificationResults_140525-0942', 
-               'classificationResults_130525-1711')
-
-targetVar <- 'species'
-groupVar <- 'encounter'
-
-dataSelect <- list()
-all_groups <- c()
-for (i in 1:length(dirSelect)) {
-  d <- read.csv(sprintf('%s/groupPredictions.csv', dirSelect[i]))
-  all_groups <- append(all_groups, unique(d[[groupVar]]))
-  all_groups <- unique(all_groups)[order(unique(all_groups))]
-  dataSelect[[LETTERS[i]]] <- d
+if (exists('allData')) {
+  write.csv(allData, sprintf('%s/allData.csv', dirName), 
+            row.names=FALSE)
 }
 
-
-```
-
-```{r}
-data_cmb <- data.frame()
-for (group in all_groups) {
-  row <- combineResults(dataSelect, group=group,
-                      targetVar=targetVar, groupVar=groupVar,
-                      fillValue = 'noise')
-  data_cmb <- rbind(data_cmb, row)
-  rownames(data_cmb) <- 1:nrow(data_cmb)
+if (exists('groupPreds')) {
+  write.csv(groupPreds, sprintf('%s/groupPredictions.csv', dirName), 
+            row.names=FALSE)
 }
 
-
-```
-
-```{r}
-#load combined data
-data_cmb <- read.csv('I:/eventsclassified_140525_4.csv', fill=TRUE)
-data_cmb$species <- gsub("Sco|Sfr", "stenella", data_cmb$species)
-minEx <- 4
-data_cmb <- subset(data_cmb, clicks >= minEx | whistles >= minEx)
-
-targetVar <- 'species'
-groupVar <- 'encID'
-targets <- unique(data_cmb[[targetVar]])
-groups <- unique(data_cmb[[groupVar]])
-ind1 <- which(names(data_cmb)=='VAR1')
-ind2 <- which(names(data_cmb)=='VAR12')
-vars <- names(data_cmb)[ind1:ind2]
-```
-
-```{r}
-library(ggplot2)
-pca_result <- prcomp(data_cmb[, vars], scale. = TRUE)
-pc_data <- as.data.frame(pca_result$x[, 1:2])
-colnames(pc_data) <- c("PC1", "PC2")
-data_pca <- cbind(data_cmb, pc_data)
-
-ggplot(data_pca, aes(x = PC1, y = PC2, color = species)) +
-  geom_point() +
-  labs(x = "(PC1)",
-       y = "(PC2)") +
-  theme_minimal()
-```
-
-```{r}
-library(randomForest)
-
-mtry <- 4
-nTrees <- 500
-
-groupCount <- 0
-results_cmb <- data.frame()
-for (k in 1:nrow(data_cmb)) {
-  groupCount <- groupCount + 1
-  groupTest <- data_cmb[[groupVar]][k]
-  xtest <- data_cmb[k,]
-  xtrain <- subset(data_cmb, data_cmb[[groupVar]]!=groupTest)
-  xtrain <- pruneData(xtrain, targetVar=targetVar, vars=vars, prune=0.1)
-  if (length(unique(xtrain[[targetVar]])) != length(targets)) {
-    xtrain <- subset(data_cmb, data_cmb[[groupVar]]!=groupTest)
-  }
-  
-  sampsizes <- rep(min(table(xtrain[[targetVar]])), 
-                   length(unique(xtrain[[targetVar]])))
-  
-  formula_str <- paste(sprintf("as.factor(%s) ~", targetVar), 
-                       paste(vars, collapse = " + "))
-  
-  if (is.null(mtry)) {
-    mtry <- floor(sqrt(length(vars)))
-  }
-  
-  m <- randomForest(as.formula(formula_str),
-                  data = xtrain,
-                  ntree = nTrees,
-                  mtry = mtry, 
-                  strata = as.factor(xtrain[[targetVar]]),
-                  sampsize = sampsizes,
-                  na.action = na.roughfix)
-  
-  label <- xtest[[targetVar]][1]
-  predFrame <- as.numeric(predict(m, xtest, type='prob'))
-  targets <- colnames(predict(m, xtest, type='prob'))
-  pred <- targets[which.max(predFrame)]
-  predFrame <- predFrame[rev(order(predFrame))]
-  conf <- predFrame[1]
-  prom <- predFrame[1] - predFrame[2]
-  score <- conf*prom
-  row <- list()
-  row[['id']] <- groupCount
-  row[[targetVar]] <- label
-  row[[groupVar]] <- groupTest
-  row[['pred']] <- pred
-  row[['score']] <- score
-  
-  predFrame <- as.numeric(predict(m, xtest, type='prob'))
-  for (i in 1:length(predFrame)) {
-    row[[targets[i]]] <- predFrame[i]
-  }
-  
-  row <- as.data.frame(row)
-  
-  results_cmb <- rbind(results_cmb, row)
-  rownames(results_cmb) <- 1:nrow(results_cmb)
-}
-```
-
-```{r}
-thrList <- seq(0,0.1,0.01)
-thrResults <- data.frame()
-
-count <- 1
-for (thr in thrList) {
-  sub <- subset(results_cmb, score >= thr)
-  accs <- c()
-  for (t in unique(results_cmb[[targetVar]])) {
-    subsub <- subset(sub, sub[[targetVar]]==t)
-    accs <- append(accs, sum(subsub$pred == subsub[[targetVar]])/nrow(subsub))
-  }
-  ovracc <- sum(sub$pred == sub[[targetVar]])/nrow(sub)
-  disc <- 1 - nrow(sub)/nrow(results_cmb)
-  row <- data.frame(id=count, minScore=thr, accOvr=ovracc, accMean=mean(accs), pDisc=disc)
-  thrResults <- rbind(thrResults, row)
-  rownames(thrResults) <- 1:nrow(thrResults)
-  count <- count + 1
+if (exists('allPreds')) {
+  write.csv(allPreds, sprintf('%s/allPredictions.csv', dirName), 
+            row.names=FALSE)
 }
 
-thrResults
+if (exists('plot_info')) {
+  if (is.list(plot_info)) {
+    ggsave(sprintf('%s/figures/performanceThresholds.png', dirName), 
+           plot=plot_info$plotOverall, 
+           width=figWidth, height=figHeight, units="in", dpi=figDPI)
+    
+    ggsave(sprintf('%s/figures/performanceGroups.png', dirName), 
+           plot=plot_info$plotGroups, 
+           width=figWidth, height=figHeight, units="in", dpi=figDPI)
+    
+    write.csv(plot_info$varImportance, 
+              sprintf('%s/variableImportance.csv', dirName), 
+              row.names = TRUE)
+    
+  }
+}
+
+if (exists('plot_tree')) {
+  ggsave(sprintf('%s/figures/performanceGroups.png', dirName), 
+         plot=plot_tree, 
+         width=figWidth, height=figHeight, units="in", dpi=figDPI)
+}
+
+if (exists('model')) {
+  saveRDS(model, sprintf('%s/classifier.rds', dirName))
+}
+
+cat(sprintf('Saved results to %s.', dirName))
 ```

@@ -2,3 +2,15 @@
 🐬  🔊  🦜  🔊  🐒  🔊  🐦  🔊  🦇  🔊  🐳  🔊  🐠  🔊  🐞  🔊  🦅  🔊  🐘  🔊  🐬
 ##
 
+This repository contains a Quarto notebook designed to facilitate training and testing of machine learning acoustic classifier models to classify acoustic data to preset labels. 
+
+### ClassifyStuff/
+
+> #### └── [Classify.qmd](https://github.com/tristankleyn/ClassifyStuff/blob/master/Classify.qmd)
+> User-friendly Quarto notebook for developing acoustic classifiers.
+
+> #### └── [Classify_functions.R](https://github.com/tristankleyn/ClassifyStuff/blob/master/Classify_functions.R)
+> Required functions for Classify.qmd
+
+> #### └── [PARAMETERS.md](https://github.com/tristankleyn/ClassifyStuff/blob/master/PARAMETERS.md)
+> Appendix of adjustable parameters in Classify.qmd

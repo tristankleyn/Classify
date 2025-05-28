@@ -18,4 +18,5 @@
 | nMax | | numeric (1+) |
 | pruneTrain |  | numeric (0-1) |
 | minScore |  | numeric (0-1) |
-| select_groups |  | text vector e.g. c('group1', 'group2') |
+| selectGroups |  | text vector e.g. c('group1', 'group2') |
+| omitGroups |  | text vector e.g. c('group1', 'group2') |

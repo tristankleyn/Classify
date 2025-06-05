@@ -32,8 +32,42 @@ The first steps for this analysis are to source the functions needed for the ana
 **Run the cell below to source required functions:**
 
 ```{r}
+#| warning: false
+
 suppressWarnings(source('Classify_functions.R'))
 ```
+
+**Set your plotting aesthetics by adjusting the parameters listed in the code cell below:**
+
+```{r}
+#GENERAL PLOT SETTINGS
+point_size <- 2
+point_transparency <- 0.7
+line_width <- 1
+border_col <- 'navy'
+axis_title_names <- NULL
+axis_title_fontsize <- 12
+axis_title_margin <- 1
+axis_tick_fontsize <- 10
+legend_names <- NULL
+legend_fontsize <- 12
+grid_lines <- 'h'
+
+#DECISION TREE PLOT SETTINGS
+tree_node_pointsize <- 4
+tree_node_fontsize <- 4
+
+#EXPORT SETTINGS
+export <- FALSE
+savefolder <- 'results04062025-1'
+plot_dims <- c(8,6)
+plot_DPI <- 600
+
+
+
+```
+
+### Reading in your data
 
 Your .csv formatted data should be structured in a hierarchy of folders, where levels of the hierarchy represent different types of information such as location, species, year, etc. The example below shows a hierarchical data structure of folders organized by species, location, and recording. The .csv data should be kept in the lowest level of the structure (e.g. recording).
 
@@ -140,18 +174,32 @@ The following parameters can be adjusted:
 -   **resultsFolder** \| specific folder to save plots to. To create new folder, leave resultsFolder as NULL.
 
 ```{r}
+#| fig-height: 7
+#| fig-width: 10
 VARIABLE1 <- 'FREQBEG'
 VARIABLE2 <- 'FREQEND'
 targetVar <- 'species'
-alpha = 0.5
-size = 2
+
 export = FALSE
 resultsFolder = NULL
 
 
-dataPlot(d=allData, 
-         variables=list('x'=VARIABLE1, 'y'=VARIABLE2, 'group'=targetVar),
-         alpha=alpha, size=size, export=export, resultsFolder=resultsFolder)
+dataPlot(d = allData, 
+         variables = list('x' = VARIABLE1, 'y' = VARIABLE2, 'group' = targetVar),
+         point_size = point_size, 
+         point_transparency = point_transparency, 
+         line_width = line_width, 
+         axis_title_names = c('Start Frequency (Hz)', 'End Frequency (Hz)'),
+         axis_title_fontsize = 16,
+         axis_title_margin = 12,
+         axis_tick_fontsize = 13,
+         legend_fontsize = 14,
+         legend_names = c('Common', 'Pilot whale', 'Bottlenose'),
+         border_col = NULL,
+         export = TRUE, 
+         savefolder = savefolder,
+         plot_dims = c(16,12),
+         plot_DPI = plot_DPI)
 ```
 
 ## 📊 (3) Train and test classifier models
@@ -216,8 +264,20 @@ The three output panels here show different aspect of the classification results
 #| fig-height: 6
 #| fig-width: 9
 
-plot_info <- plotResults(groupPreds, model=model,
-                         thrMax=0.10, point_size=1, targetVar=targetVar)
+plot_info <- plotResults(groupPreds, allPreds,
+                         model=model, targetVar=targetVar, thrMax=0.10,
+                         point_size=3, 
+                         point_transparency=0.8,
+                         line_width=line_width,
+                         axis_title_fontsize=14,
+                         axis_title_margin=12,
+                         axis_tick_fontsize=12,
+                         legend_fontsize=14,
+                         border_col = NULL,
+                         export = TRUE,
+                         savefolder = savefolder,
+                         plot_dims = c(16,12),
+                         plot_DPI = 600)
 
 ```
 
@@ -227,8 +287,21 @@ plot_info <- plotResults(groupPreds, model=model,
 #| out-width: "100%" 
 #| out-height: "auto" 
 
-plot_tree <- showTree(model, tree_num=8, 
-                      nodeSize=4, nodeText=4, labelText=4)
+trees_to_plot <- 1:10
+
+for (index in trees_to_plot) {
+  plot_tree <- plotDecisionTree(model, 
+                                tree_num = index, 
+                                nodeSize = tree_node_pointsize, 
+                                nodeText = tree_node_fontsize, 
+                                labelText = tree_node_fontsize,
+                                show_plot=FALSE,
+                                export = TRUE,
+                                savefolder = savefolder,
+                                plot_dims = c(8,6),
+                                plot_DPI = 600)
+}
+
 ```
 
 ## 📥 (4) Export results

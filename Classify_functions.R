@@ -402,8 +402,11 @@ summResults <- function(df, targetVar, minScore=0, digits = 2) {
   cat(sprintf('Highest: %s (%s)', round(highAcc, 3), highGroup))
 }
 
-plotResults <- function(results, model, targetVar, show_vars=15, thrMax=0.10, point_size=1, show_plots=TRUE, 
-                        axistitle_fontsize=14, legend_fontsize=12, ticklabel_fontsize=10) {
+plotResults <- function(results, results_all, model, targetVar, show_vars=15, thrMax=0.10, point_size=1, line_width=1, 
+                        axis_title_fontsize=14, axis_title_margin=10, legend_fontsize=12, border_col=NULL,
+                        show_plots=TRUE, export=FALSE, savefolder=NULL, plot_dims=c(8,6), plot_DPI=600,
+                        point_transparency=1, axis_tick_fontsize=10, background='white') {
+  
   thrList <- seq(0, thrMax, 0.01)
   RetAcc <- data.frame()
   for (thr in thrList) {
@@ -426,12 +429,20 @@ plotResults <- function(results, model, targetVar, show_vars=15, thrMax=0.10, po
   
   label_colors <- c("ALL" = "black")
   other_labels <- setdiff(unique(RetAcc$label), "ALL")
+  choose_colors <- c('#E69F00', '#56B4E9', '#009E73', '#D55E00', '#CC79A7', '#0072B2', '#E2D630')
   num_other_labels <- length(other_labels)
   if (num_other_labels > 0) {
     other_colors <- c()
-    for (i in 1:num_other_labels) {
-      other_colors <- append(other_colors, rgb(runif(1,0,1), runif(1,0,1), runif(1,0,1), 1))
+    if (num_other_labels > length(choose_colors)) {
+      for (i in 1:num_other_labels) {
+        other_colors <- append(other_colors, rgb(runif(1,0,1), runif(1,0,1), runif(1,0,1), 1))
+      }
+    } else {
+      for (i in 1:num_other_labels) {
+        other_colors <- append(other_colors, choose_colors[i])
+      }
     }
+    
     label_colors[other_labels] <- other_colors
   }
   
@@ -453,26 +464,26 @@ plotResults <- function(results, model, targetVar, show_vars=15, thrMax=0.10, po
   
   p2 <- ggplot(data = subALL) +
     theme_bw() +
-    geom_line(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy')) +
-    geom_point(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy')) +
-    geom_line(aes(x = minScore, y = mean_acc, colour = 'Mean accuracy')) +
-    geom_point(aes(x = minScore, y = mean_acc, colour = 'Mean accuracy')) +
-    geom_line(aes(x = minScore, y = retention, colour = '% groups classified')) +
-    geom_point(aes(x = minScore, y = retention, colour = '% groups classified')) +
+    geom_line(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy'), lw=line_width) +
+    geom_point(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy'), size=point_size, alpha=point_transparency) +
+    geom_line(aes(x = minScore, y = mean_acc, colour = 'Mean accuracy'), lw=line_width) +
+    geom_point(aes(x = minScore, y = mean_acc, colour = 'Mean accuracy'), size=point_size, alpha=point_transparency) +
+    geom_line(aes(x = minScore, y = retention, colour = '% groups classified'), lw=line_width) +
+    geom_point(aes(x = minScore, y = retention, colour = '% groups classified'), size=point_size, alpha=point_transparency) +
     scale_colour_manual(
       name = NULL,
-      values = c('Overall accuracy' = 'darkgreen',
-                 'Mean accuracy' = 'darkcyan',
-                 '% groups classified' = 'chocolate')
+      values = c('Overall accuracy' = '#000000',
+                 'Mean accuracy' = '#E69F00',
+                 '% groups classified' = '#56B4E9')
     ) +
     xlab('Minimum prediction score') +
     ylab(NULL) + 
     ylim(c(0,100)) +
     theme(
-      axis.title.x = element_text(face = "bold", margin = margin(t = 10), size=axistitle_fontsize),
-      axis.title.y = element_text(face = "bold", margin = margin(r = 10), size=axistitle_fontsize),
-      axis.text.x = element_text(size = ticklabel_fontsize),
-      axis.text.y = element_text(size = ticklabel_fontsize),
+      axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
+      axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
+      axis.text.x = element_text(size = axis_tick_fontsize),
+      axis.text.y = element_text(size = axis_tick_fontsize),
       legend.position = "top",
       legend.box = "horizontal",
       legend.justification = "left",
@@ -481,7 +492,7 @@ plotResults <- function(results, model, targetVar, show_vars=15, thrMax=0.10, po
   
   p3 <- ggplot(data = RetAcc, aes(x = retention, y = ovr_acc, group = label, colour = label, size = label, alpha = label)) +
     theme_bw() +
-    geom_point(pch=16) +
+    geom_point(size=point_size, alpha=point_transparency, pch=16) +
     scale_color_manual(values = label_colors) +
     scale_size_manual(values = label_sizes) +
     scale_alpha_manual(values = label_alphas) +
@@ -492,19 +503,89 @@ plotResults <- function(results, model, targetVar, show_vars=15, thrMax=0.10, po
     theme(
       legend.position = "top",
       legend.title = element_blank(),
-      axis.title.x = element_text(face = "bold", margin = margin(t = 10), size=axistitle_fontsize),
-      axis.title.y = element_text(face = "bold", margin = margin(r = 10), size=axistitle_fontsize),
-      axis.text.x = element_text(size = ticklabel_fontsize),
-      axis.text.y = element_text(size = ticklabel_fontsize),
+      axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
+      axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
+      axis.text.x = element_text(size = axis_tick_fontsize),
+      axis.text.y = element_text(size = axis_tick_fontsize),
       legend.text = element_text(size = legend_fontsize)
     ) +
     guides(colour = guide_legend(nrow = 1)) # Forces labels to be in a single row
+  
+  if (!is.null(border_col)) {
+    p2 <- p2 + theme(panel.border = element_rect(colour = border_col, fill=NA, linewidth=1))
+    p3 <- p3 + theme(panel.border = element_rect(colour = border_col, fill=NA, linewidth=1))
+  } else {
+    p2 <- p2 + theme(panel.border = element_blank())
+    p3 <- p3 + theme(panel.border = element_blank())
+  }
+  
+  if (!is.null(background)) {
+    p2 <- p2 + theme(
+      panel.background = element_rect(fill = background),   # White background for the plotting panel
+      plot.background = element_rect(fill = background)    # White background for the entire plot area (including margins, titles, legend)
+    )
+    p3 <- p3 + theme(
+      panel.background = element_rect(fill = background),   # White background for the plotting panel
+      plot.background = element_rect(fill = background)    # White background for the entire plot area (including margins, titles, legend)
+    )
+    
+  } else {
+    p2 <- p2 + theme(
+      panel.background = element_rect(fill = "transparent", colour = NA),
+      plot.background = element_rect(fill = "transparent", colour = NA)
+    )
+    p3 <- p3 + theme(
+      panel.background = element_rect(fill = "transparent", colour = NA),
+      plot.background = element_rect(fill = "transparent", colour = NA)
+    )
+  }
   
   info <- list(varImportance=p1, plotOverall=p2, plotGroups=p3, df=RetAcc)
   if (show_plots == TRUE) {
     print(p3)
     print(p2)
   }
+  
+  if (export==TRUE) {
+    if (is.null(savefolder)) {
+      dirName <- makeDirSysDT(create=FALSE)
+      if (!dirName %in% dir()) {
+        dirName <- makeDirSysDT(create=TRUE)
+      }
+    } else {
+      dirName <- savefolder
+    }
+    
+    if (!dirName %in% dir()) {
+      dir.create(dirName)
+    }
+    
+    if (!'figures' %in% dir(dirName)) {
+      dir.create(sprintf('%s/figures', dirName))
+    }
+    num <- 1
+    for (item in dir(sprintf('%s/figures', dirName))) {
+      if (grepl('dataPlot', item) & grepl('.png', item)) {
+        num <- num + 1
+      }
+    }
+    
+    ggsave(sprintf('%s/figures/classifierPerformanceA.png', dirName, num), 
+           plot=p2, width=plot_dims[1], height=plot_dims[2], units="cm", dpi=plot_DPI)
+    
+    ggsave(sprintf('%s/figures/classifierPerformanceB.png', dirName, num), 
+           plot=p3, width=plot_dims[1], height=plot_dims[2], units="cm", dpi=plot_DPI)
+    
+    
+    write.csv(results, sprintf('%s/groupPredictions.csv', dirName), row.names = FALSE)
+    write.csv(results_all, sprintf('%s/individualPredictions.csv', dirName), row.names = FALSE)
+    
+    if (!is.null(model)) {
+      saveRDS(model, sprintf('%s/classifier.rds', dirName))
+    }
+    
+  }
+  
   
   return(info)
 }
@@ -641,8 +722,10 @@ combineResults <- function(dataSelect, group, targetVar, groupVar, fillValue='no
   return(row)
 }
 
-dataPlot <- function(d, variables=list('x'=NULL, 'y'=NULL, 'group'=NULL), alpha=0.7, size=1, 
-                     export=FALSE, plotDPI=400, plotDims=c(8,6), resultsFolder=NULL) {
+dataPlot <- function(d, variables=list('x'=NULL, 'y'=NULL, 'group'=NULL), point_transparency=1, point_size=1, 
+                     line_width=1, axis_title_fontsize=12, axis_title_margin=10, axis_tick_fontsize=10, 
+                     legend_fontsize=12, legend_names=NULL, border_col=NULL, axis_title_names=NULL,
+                     export=FALSE, background='white', savefolder=NULL, plot_DPI=400, plot_dims=c(8,6)) {
   
   xVar <- unlist(variables['x'])[1]
   yVar <- unlist(variables['y'])[1]
@@ -667,47 +750,122 @@ dataPlot <- function(d, variables=list('x'=NULL, 'y'=NULL, 'group'=NULL), alpha=
   
   p <- ggplot(data=d) + theme_bw() # Initialize ggplot and the base theme
   
+  if (!is.null(border_col)) {
+    p <- p + theme(panel.border = element_rect(colour = border_col, fill=NA, linewidth=1))
+  } else {
+    p <- p + theme(panel.border = element_blank())
+  }
+  
   if (num_var == 1) {
-    p <- p + geom_density(aes(x=.data[[xVar]], colour=.data[[gVar]]))
+    p <- p + geom_density(aes(x=.data[[xVar]], linewidth=line_width, colour=.data[[gVar]])) # Corrected 'lw' to 'linewidth' for geom_density
   } else if (num_var == 2) {
-    p <- p + geom_point(aes(x=.data[[xVar]], y=.data[[yVar]], colour=.data[[gVar]]), alpha=alpha, size=size,)
+    p <- p + geom_point(aes(x=.data[[xVar]], y=.data[[yVar]], colour=.data[[gVar]]), alpha=point_transparency, size=point_size)
   }
   
   # Add labels and title
+  # The axis title and text themes are applied to both x and y axes if either xVar or yVar is present.
+  # This ensures consistent styling regardless of which variable is specified first.
+  p <- p + theme(axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
+                 axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
+                 axis.text.x = element_text(size = axis_tick_fontsize),
+                 axis.text.y = element_text(size = axis_tick_fontsize))
+  
   if (!is.null(xVar)) p <- p + xlab(xVar)
   if (!is.null(yVar)) p <- p + ylab(yVar)
   
-  # Conditionally handle the legend
+  if (!is.null(axis_title_names)) {
+    # If custom axis names are provided, they override the variable names
+    p <- p + xlab(axis_title_names[1]) + ylab(axis_title_names[2])
+  }
+  
+  # Define the base color palette
+  base_palette <- c('#E69F00', '#56B4E9', '#CC79A7', '#009E73', '#D55E00','#0072B2', '#E2D630')
+  
+  # Conditionally handle the legend and apply custom colors
   if (!is.null(gVar)) {
+    # Get the number of unique groups
+    num_groups <- length(unique(d[[gVar]]))
+    
+    # Initialize the final palette with the base colors
+    final_palette <- base_palette
+    
+    # If more colors are needed, generate random hex colors
+    if (num_groups > length(base_palette)) {
+      colors_to_add <- num_groups - length(base_palette)
+      
+      # Function to generate a random hex color
+      generate_random_hex_color <- function() {
+        paste0("#", paste(sample(c(0:9, LETTERS[1:6]), 6, replace = TRUE), collapse = ""))
+      }
+      
+      # Generate and add random colors
+      for (i in 1:colors_to_add) {
+        final_palette <- c(final_palette, generate_random_hex_color())
+      }
+    }
+    
     p <- p + labs(colour = gVar) +
       theme(legend.position = "top",
+            legend.text = element_text(size = legend_fontsize),
             legend.title = element_blank()) # Remove legend title and position at the top
+    
+    # Apply the custom color scale using scale_color_manual
+    # If legend_names are provided, apply them as labels
+    if (!is.null(legend_names)) {
+      if (length(legend_names) != num_groups) {
+        warning(paste("Number of manual legend labels (", length(legend_names), ") does not match number of groups (", num_groups, "). Labels may be misapplied or incomplete.", sep=""))
+      }
+      p <- p + scale_color_manual(values = final_palette, labels = legend_names)
+    } else {
+      p <- p + scale_color_manual(values = final_palette)
+    }
+    
   } else {
     p <- p + theme(legend.position = "none") # Remove legend if gVar is NULL
   }
   
+  if (!is.null(background)) {
+    p <- p + theme(
+      panel.background = element_rect(fill = background),   # White background for the plotting panel
+      plot.background = element_rect(fill = background)    # White background for the entire plot area (including margins, titles, legend)
+    )
+  } else {
+    p <- p + theme(
+      panel.background = element_rect(fill = "transparent", colour = NA),
+      plot.background = element_rect(fill = "transparent", colour = NA)
+    )
+  }
+  
   if (export==TRUE) {
-    if (is.null(resultsFolder)) {
+    if (is.null(savefolder)) {
       dirName <- makeDirSysDT(create=FALSE)
       if (!dirName %in% dir()) {
         dirName <- makeDirSysDT(create=TRUE)
       }
     } else {
-      dirName <- resultsFolder
+      dirName <- savefolder
     }
     
-    if (!'figures' %in% dir(dirName)) {
-      dir.create(sprintf('%s/figures', dirName))
+    if (!dirName %in% dir()) {
+      dir.create(dirName)
     }
+    
+    figures_path <- sprintf('%s/figures', dirName)
+    if (!dir.exists(figures_path)) { 
+      dir.create(figures_path)
+    }
+    
     num <- 1
-    for (item in dir(sprintf('%s/figures', dirName))) {
-      if (grepl('dataPlot', item) & grepl('.png', item)) {
-        num <- num + 1
-      }
+    existing_plots <- list.files(figures_path, pattern = "^dataPlot.*\\.png$")
+    if (length(existing_plots) > 0) {
+      plot_numbers <- as.numeric(gsub("dataPlot(\\d+)\\.png", "\\1", existing_plots))
+      num <- max(plot_numbers, na.rm = TRUE) + 1
     }
-  
-    ggsave(sprintf('%s/figures/dataPlot%s.png', dirName, num), 
-           plot=p, width=plotDims[1], height=plotDims[2], units="in", dpi=plotDPI)
+    
+    ggsave(sprintf('%s/dataPlot%s.png', figures_path, num), 
+           plot=p, width=plot_dims[1], height=plot_dims[2], units="cm", dpi=plot_DPI)
+    
+    write.csv(d, sprintf('%s/allData.csv', dirName), row.names = FALSE)
   }
   
   print(p)
@@ -800,7 +958,9 @@ imputeData <- function(data, targetVar, groupVar, impLim=2, verbose=FALSE) {
 }
 
 
-showTree <- function(m, tree_num=1, nodeSize=4, nodeText=2, labelText=2) {
+plotDecisionTree <- function(m, tree_num=1, nodeSize=4, nodeText=2, labelText=2, show_plot=FALSE, background='white',
+                             export=FALSE, savefolder=NULL, plot_dims=c(8,6), plot_DPI=600) {
+  
   # Extract a single tree (e.g., the first tree)
   tree_info <- getTree(m, k = tree_num, labelVar = TRUE)
   
@@ -869,8 +1029,55 @@ showTree <- function(m, tree_num=1, nodeSize=4, nodeText=2, labelText=2) {
     labs(title = paste("Decision Tree", tree_num, "from Random Forest Model")) +
     theme(legend.position = "none") # Hide legend for simplicity
   
-  print(plot_tree)
-  return(plot_tree)
+  if (!is.null(background)) {
+    plot_tree <- plot_tree + theme(
+      panel.background = element_rect(fill = background),   # White background for the plotting panel
+      plot.background = element_rect(fill = background)    # White background for the entire plot area (including margins, titles, legend)
+    )
+  } else {
+    plot_tree <- plot_tree + theme(
+      panel.background = element_rect(fill = "transparent", colour = NA),
+      plot.background = element_rect(fill = "transparent", colour = NA)
+    )
+  }
+  
+  
+  if (show_plot == TRUE) {
+    print(plot_tree)
+  }
+  
+  
+  if (export==TRUE) {
+    if (is.null(savefolder)) {
+      dirName <- makeDirSysDT(create=FALSE)
+      if (!dir.exists(dirName)) { # Changed from !dirName %in% dir() to dir.exists() for robustness
+        dirName <- makeDirSysDT(create=TRUE)
+      }
+    } else {
+      dirName <- savefolder
+      if (!dir.exists(dirName)) { # Ensure the specified folder exists
+        dir.create(dirName, recursive = TRUE)
+      }
+    }
+    
+    figures_path <- sprintf('%s/figures', dirName)
+    if (!dir.exists(figures_path)) { # Changed from !'figures' %in% dir(dirName) to dir.exists()
+      dir.create(figures_path)
+    }
+    
+    ggsave(sprintf('%s/treePlot%s.png', figures_path, tree_num), 
+           plot=plot_tree, width=plot_dims[1], height=plot_dims[2], units="cm", dpi=plot_DPI)
+    
+    
+    cat(sprintf('Saved plot: %s', sprintf('%s/treePlot%s.png\n', figures_path, tree_num)))
+    return(list(p = plot_tree, savepath=figures_path))
+    
+    
+  } else {
+    return(list(p = plot_tree, savepath=NULL))
+  }
+  
+  
 }
 
 cat('\u2713 Done loading functions')

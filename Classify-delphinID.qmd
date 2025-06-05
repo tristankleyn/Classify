@@ -1,0 +1,149 @@
+---
+title: "Classify-delphinID"
+format: html
+editor: visual
+---
+
+**Load required functions:**
+
+```{r}
+#| warning: false
+source('Classify-delphinID_functions.R')
+```
+
+**Settings:**
+
+```{r}
+rseed <- 42
+rds_files <- list.files(pattern = "\\.rds$") 
+
+selectDB <- 'pamguard/db2705'
+classifierType <- 'delphinID'
+classifierSelect <- NULL
+cTable <- 'Deep_Learning_Classifier___Clicks'
+wTable <- 'Deep_Learning_Classifier___Whistles'
+
+evScore <- 0.0
+minClicks <- 0
+minWhistles <- 0
+AndOr <- 'or'
+dateRange <- c(Sys.Date() - 10652, Sys.Date())
+
+
+```
+
+```{r}
+#| warning: false
+set.seed(rseed)
+db_con <- dbConnect(RSQLite::SQLite(), sprintf('%s.sqlite3', selectDB))
+on.exit(dbDisconnect(db_con))
+dateRange <- dateRange
+model <- readRDS(sprintf('EventClassifier_%s.rds', classifierType))
+if (classifierType == 'ROCCA') {
+  infoEvents <- processdataRocca(db_con, dateRange,
+                                  verbose = FALSE)
+  
+} else if (classifierType == 'delphinID') {
+  infoEvents <- processdataDelphinID(db_con, dateRange, 
+                                     ctable = cTable, 
+                                     wtable = wTable, 
+                                     randseed = rseed,
+                                     verbose = FALSE)
+}
+
+predInfo <- getClassifications(test_events = test_events,
+                               model = model,
+                               classifierType = classifierType,
+                               evScore = evScore,
+                               minClicks = minClicks,
+                               minWhistles = minWhistles,
+                               AndOr = AndOr,
+                               export = TRUE)
+
+test_events <- infoEvents$df
+df_whistles <- infoEvents$df_whistles
+df_clicks <- infoEvents$df_clicks
+```
+
+```{r}
+#| warning: false
+map <- plotClassifications(predInfo$preds, predInfo$PCAdf, plotType = 'Map',
+                    evScore = evScore, classifierType=classifierType)
+```
+
+**Load classification results, create new classifier**
+
+```{r}
+data_paths <- list()
+if ('classifications' %in% dir()) {
+  for (item in dir('classifications')) {
+    if (grepl('.csv', item)) {
+      name <- substr(item, 1, nchar(item)-4)
+      data_paths[[name]] <- item
+    }
+  }
+}
+
+data_paths
+```
+
+```{r}
+filename <- 'groupClassifications-0506251117'
+targetVar <- 'species'
+groupVar <- 'eventGroup'
+minClicks <- 0
+minWhistles <- 0
+AndOr <- 'or'
+
+info <- loadResults(filename, targetVar=targetVar, groupVar=groupVar,
+                    minClicks=0, minWhistles=0, AndOr='or', 
+                    plot_data=TRUE, verbose=FALSE)
+
+data_cmb <- info$data
+vars <- info$variables
+targets <- info$targets
+groups <- info$groups
+```
+
+```{r}
+library(randomForest)
+
+mtry <- NULL
+ns <- 5
+nTrees <- 1000
+impute <- 3
+prune <- 0
+
+results <- trainClassifier(data_cmb, vars, 
+                           targetVar = targetVar, 
+                           groupVar = groupVar,
+                           nTrees = nTrees,
+                           mtry = mtry,
+                           ns = ns,
+                           prune = prune,
+                           impute = impute,
+                           verbose = FALSE)
+```
+
+```{r}
+thrList <- seq(0,0.2,0.01)
+thrResults <- data.frame()
+
+count <- 1
+for (thr in thrList) {
+  sub <- subset(results, score >= thr)
+  accs <- c()
+  for (t in unique(results[[targetVar]])) {
+    subsub <- subset(sub, sub[[targetVar]]==t)
+    accs <- append(accs, sum(subsub$pred == subsub[[targetVar]])/nrow(subsub))
+  }
+  ovracc <- sum(sub$pred == sub[[targetVar]])/nrow(sub)
+  disc <- 1 - nrow(sub)/nrow(results)
+  row <- data.frame(id=count, minScore=thr, accOvr=ovracc, accMean=mean(accs), pDisc=disc)
+  thrResults <- rbind(thrResults, row)
+  rownames(thrResults) <- 1:nrow(thrResults)
+  count <- count + 1
+}
+
+thrResults
+```

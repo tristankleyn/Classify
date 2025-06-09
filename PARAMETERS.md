@@ -17,7 +17,7 @@
 | Classify-delphinID | minWhistles | minimum number of whistle classifications below which event classifications are discarded. | numeric (0+) |
 | Classify-ROCCA, Classify-delphinID | mTry | the number of predictor variables used per decision tree node | numeric (1+) |
 | Classify-ROCCA | nMax | the maximum number of observations to sample from each group for training classifiers | numeric (1+) |
-| Classify-ROCCA, Classify-delphinID | nodeSize |   | numeric (1+) |
+| Classify-ROCCA, Classify-delphinID | nodeSize | minimum number of observations allowed in any terminal node (or leaf) of a decision tree in the Random Forest model | numeric (1+) |
 | Classify-ROCCA, Classify-delphinID | nTrees | number of decision trees to use in a Random Forest model | numeric (1+) |
 | Classify-ROCCA | omitGroups | vector of groups to omit from classifier training and testing | text vector e.g. c('group1', 'group2') |
 | Classify-ROCCA | omitVars | vector of variables to omit from classifier training and testing | text vector e.g. c('FREQMAX', 'DURATION') |

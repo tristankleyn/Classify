@@ -14,6 +14,23 @@ suppressWarnings(library(dplyr))
 suppressWarnings(library(tidyr))
 library(jsonlite)
 
+makeDirSysDT <- function(create=TRUE) {
+  # Get the current date and time
+  current_date <- format(Sys.Date(), "%d%m%y")
+  current_time <- format(Sys.time(), "%H%M")
+  
+  # Construct the directory name
+  dir_name <- paste0("classificationResults_", current_date, "-", current_time)
+  
+  # Create the directory
+  if (create==TRUE) {
+    dir.create(dir_name)
+  }
+  
+  # Return the name of the created directory (optional, but good practice)
+  return(dir_name)
+}
+
 processdataRocca <- function(db_con, dateRange, verbose=TRUE) {
   data <- dbGetQuery(db_con, paste0("SELECT * FROM Rocca_Whistle_Stats"))
   SAQ <- dbGetQuery(db_con, paste0("SELECT * FROM Sound_Acquisition"))
@@ -397,6 +414,34 @@ processdataDelphinID <- function(db_con, dateRange, ctable=NULL, wtable=NULL, ra
   list(df=test_events, df_whistles=df_whistles, df_clicks=df_clicks)
 }
 
+getEvents <- function(selectDB, classifierType='delphinID', dateRange=NULL, verbose = FALSE,
+                      wtable='Deep_Learning_Classifier___Whistles', ctable='Deep_Learning_Classifier___Clicks', rseed=42) {
+  set.seed(rseed)
+  if (is.null(dateRange)) {
+    dateRange <- c(Sys.Date() - 20000, Sys.Date())
+  }
+  
+  db_con <- dbConnect(RSQLite::SQLite(), sprintf('%s', selectDB))
+  on.exit(dbDisconnect(db_con))
+  model <- readRDS(sprintf('EventClassifier_%s.rds', classifierType))
+  if (classifierType == 'ROCCA') {
+    infoEvents <- processdataRocca(db_con, dateRange,
+                                   verbose = verbose)
+    
+  } else if (classifierType == 'delphinID') {
+    infoEvents <- processdataDelphinID(db_con, dateRange, 
+                                       ctable = cTable, 
+                                       wtable = wTable, 
+                                       randseed = rseed,
+                                       verbose = verbose)
+  }
+  
+  test_events <- infoEvents$df
+  df_whistles <- infoEvents$df_whistles
+  df_clicks <- infoEvents$df_clicks
+  return(list(test_events=test_events, df_whistles=df_whistles, df_clicks=df_clicks))
+}
+
 getClassifications <- function(test_events, model, classifierType='delphinID', 
                            evScore=0, minClicks=0, minWhistles=0, AndOr='or', export = FALSE, savefolder = NULL) {
   rownames(test_events) <- 1:nrow(test_events)
@@ -776,7 +821,7 @@ loadResults <- function(filename, targetVar='species', groupVar='encID', samples
 }
 
 trainClassifier <- function(data_cmb, vars, targetVar='species', groupVar='eventID', 
-                            nTrees=500, mtry=NULL, ns=1, prune=0, impute=NULL, verbose=FALSE) {
+                            nTrees=500, mtry=NULL, ns=1, prune=0, impute=NULL, verbose=FALSE, export=FALSE, savefolder=NULL) {
   if (verbose == TRUE) {
     cat(sprintf('Training classifiers over %s-fold cross-validation...\n', nrow(data_cmb)))
   }
@@ -861,5 +906,74 @@ trainClassifier <- function(data_cmb, vars, targetVar='species', groupVar='event
     }
   }
   
+  if (export==TRUE) {
+    if (is.null(savefolder)) {
+      dirName <- makeDirSysDT()
+    } else {
+      dirName <- savefolder
+    }
+    
+    write.csv(data_cmb, sprintf('%s/trainingData.csv', savefolder), row.names = FALSE)
+    write.csv(results_cmb, sprintf('%s/groupClassifications.csv', savefolder), row.names = FALSE)
+    saveRDS(m, sprintf('%s/classifier.rds', savefolder))
+  }
+  
   return(results_cmb)
 }
+
+summResults <- function(df, targetVar, minScore=0, digits = 2) {
+  nTot <- nrow(df)
+  # 1. Check for required columns and classes
+  if (!is.data.frame(df)) {
+    stop("Input 'df' must be a data.frame.")
+  }
+  if (!all(c("species", "pred") %in% names(df))) {
+    stop("Input 'df' must contain columns named 'species' and 'pred'.")
+  } else {
+    df$species <- as.factor(df$species)
+    df$pred <- as.factor(df$pred)
+  }
+  if (!is.factor(df$species) || !is.factor(df$pred)) {
+    stop("Columns 'species' and 'pred' must be of class factor.")
+  }
+  
+  df <- subset(df, score >= minScore)
+  acc_all <- sum(df$pred == df[[targetVar]])/nrow(df)
+  acc_mean <- c()
+  for (group in unique(df[[targetVar]])) {
+    sub <- subset(df, df[[targetVar]] == group)
+    acc_mean <- append(acc_mean, sum(sub$pred == sub[[targetVar]])/nrow(sub))
+  }
+  
+  lowAcc <- min(acc_mean)
+  highAcc <- max(acc_mean)
+  lowGroup <- unique(df[[targetVar]])[which.min(acc_mean)]
+  highGroup <- unique(df[[targetVar]])[which.max(acc_mean)]
+  pctClassified <- nrow(df)/nTot
+  acc_mean <- mean(acc_mean)
+  
+  # 2. Create the confusion matrix as a data.table
+  conf_matrix_dt <- as.data.table(table(df$species, df$pred))
+  setnames(conf_matrix_dt, c("Actual", "Predicted", "Count"))
+  
+  # 3. Calculate percentages
+  conf_matrix_dt[, `Total Actual` := sum(Count), by = Actual]
+  conf_matrix_dt[, Percentage := round((Count / `Total Actual`), digits), by = Actual]
+  conf_matrix_dt[, Display := paste0(Count, " (", Percentage, ")")]
+  
+  # 4. Pivot the data.table for better presentation
+  conf_matrix_wide <- dcast(conf_matrix_dt, Actual ~ Predicted, value.var = "Display")
+  
+  # 5.  Return the data.table
+  print(conf_matrix_wide)
+  
+  # 6.  Print summary of results
+  cat(sprintf('\n\033[1mClassification results, %s-fold cross-validation:\033[0m\n', nTot))
+  cat(sprintf('Classifications discarded: %s (%s/%s)\n', round((1-pctClassified), 3), nrow(df), nTot))
+  cat(sprintf('Overall accuracy: %s\n', round(acc_all, 3)))
+  cat(sprintf('Mean %s accuracy: %s\n', targetVar, round(acc_mean, 3)))
+  cat(sprintf('Lowest: %s (%s)\n', round(lowAcc, 3), lowGroup))
+  cat(sprintf('Highest: %s (%s)', round(highAcc, 3), highGroup))
+}
+
+cat('Done loading functions.\n')

@@ -143,7 +143,9 @@ loadDataFromHier <- function(root_path, startVar, endVar, vocType, from_folders=
               omitVars <- omitVars[!omitVars %in% names(meta_df)[a:b]]
             }
             
+            GMT_store <- current_data$Start_DateTime_GMT
             current_data <- current_data[,ind1:ind2]
+            current_data$GMTStart <- GMT_store
             if (nrow(current_data) > 0) {
               for (i in seq_along(hierarchy_levels)) {
                 if (i <= length(current_level_names)) {
@@ -239,7 +241,8 @@ getPred <- function(x) {
   return(labels[which.max(x)])
 }
 
-classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omit=c(), prune=0, minScore=0, nMax=1000, nTrees=500, mtry=NULL, node_size=1, verbose=TRUE) {
+classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omit=c(), load_model=NULL,
+                         prune=0, minScore=0, nMax=1000, nTrees=500, mtry=NULL, node_size=1, verbose=TRUE) {
   results <- data.frame()
   allpreds <- data.frame()
   data$uid <- 1:nrow(data)
@@ -252,7 +255,12 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
     mtry <- sqrt(length(vars))
   }
   
-  all_labels <- unique(data[[targetVar]])[order(unique(data[[targetVar]]))]
+  if (is.null(load_model)) {
+    all_labels <- unique(data[[targetVar]])[order(unique(data[[targetVar]]))]
+  } else {
+    all_labels <- load_model$classes
+  }
+   
   all_groups <- unique(data[[groupVar]])[order(unique(data[[groupVar]]))]
 
   if (length(select_groups) > 0) {
@@ -263,21 +271,26 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
   for (group in all_groups) {
     xtest <- subset(data, data[[groupVar]]==group)
     xtrain <- subset(data, data[[groupVar]]!=group)
-    if (prune > 0) {
+    if (prune > 0 & is.null(load_model)) {
       xtrain <- pruneData(xtrain, targetVar=targetVar, vars=vars, prune=prune)
     }
+
     xtrain <- limitByGroup(xtrain, groupVar=groupVar, nMax=nMax)
     if (nrow(xtrain) > 0 & nrow(xtest) > 0) {
-      sampsizes <- rep(min(table(xtrain[[targetVar]])), length(unique(xtrain[[targetVar]])))
-      formula_str <- paste(sprintf("as.factor(%s) ~", targetVar), paste(vars, collapse = " + "))
-      m <- randomForest(as.formula(formula_str),
-                        data = xtrain,
-                        ntree = nTrees,
-                        mtry = mtry, 
-                        nodesize = node_size,
-                        strata = as.factor(xtrain[[targetVar]]),
-                        sampsize = sampsizes,
-                        na.action = na.roughfix)
+      if (is.null(load_model)) {
+        sampsizes <- rep(min(table(xtrain[[targetVar]])), length(unique(xtrain[[targetVar]])))
+        formula_str <- paste(sprintf("as.factor(%s) ~", targetVar), paste(vars, collapse = " + "))
+        m <- randomForest(as.formula(formula_str),
+                          data = xtrain,
+                          ntree = nTrees,
+                          mtry = mtry, 
+                          nodesize = node_size,
+                          strata = as.factor(xtrain[[targetVar]]),
+                          sampsize = sampsizes,
+                          na.action = na.roughfix)
+      } else {
+        m <- load_model
+      }
       
       predFrame <- predict(m, xtest, type='prob')
       testUID <- xtest$uid
@@ -292,7 +305,9 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
         scoreList <- unlist(apply(predFrame, 1, getScore))
         predFrame$pred <- predList
         predFrame$score <- scoreList
-        predFrame[[targetVar]] <- unique(xtest[[targetVar]])[1]
+        if (is.null(load_model)) {
+          predFrame[[targetVar]] <- unique(xtest[[targetVar]])[1]
+        }
         predFrame[[groupVar]] <- group
         predFrame <- cbind(predFrame, xtest)
         allpreds <- rbind(allpreds, predFrame)
@@ -304,7 +319,9 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
         score <- prom*conf
         
         predrow <- data.frame(dummy_col = NA)
-        predrow[[targetVar]] <- unique(xtest[[targetVar]])[1]
+        if (is.null(load_model)) {
+          predrow[[targetVar]] <- unique(xtest[[targetVar]])[1]
+        }
         predrow[[groupVar]] <- group
         predrow$n <- nrow(xtest)
         predrow$pred <- pred
@@ -316,30 +333,35 @@ classifyData <- function(data, targetVar, groupVar, vars, select_groups=c(), omi
         }
         results <- rbind(results, predrow)
         if (verbose == TRUE) {
-          cat(sprintf('%s (%s) - prediction: %s (%s)\n', group,  unique(xtest[[targetVar]])[1], pred, round(score, 3)))
+          if (is.null(load_model)) {
+            cat(sprintf('%s (%s) - prediction: %s (%s)\n', group,  unique(xtest[[targetVar]])[1], pred, round(score, 3)))
+          }
         }
       } else {
-        cat(sprintf('%s (%s) - no predictions\n', group, unique(xtest[[targetVar]])[1]))
+        if (is.null(load_model)) {
+          cat(sprintf('%s (%s) - no predictions\n', group, unique(xtest[[targetVar]])[1]))
+        }
       }
     }
   }
   
   xtrain <- data
-  if (prune > 0) {
+  if (prune > 0 & is.null(load_model)) {
     xtrain <- pruneData(xtrain, targetVar=targetVar, vars=vars, prune=prune)
   }
   xtrain <- limitByGroup(xtrain, groupVar=groupVar, nMax=nMax)
-  sampsizes <- rep(min(table(xtrain[[targetVar]])), length(unique(xtrain[[targetVar]])))
-  formula_str <- paste(sprintf("as.factor(%s) ~", targetVar), paste(vars, collapse = " + "))
-  m <- randomForest(as.formula(formula_str),
-                    data = xtrain,
-                    ntree = nTrees,
-                    mtry = mtry, 
-                    strata = as.factor(xtrain[[targetVar]]),
-                    sampsize = sampsizes,
-                    na.action = na.roughfix,
-                    importance=TRUE)
-  
+  if (is.null(load_model)) {
+    sampsizes <- rep(min(table(xtrain[[targetVar]])), length(unique(xtrain[[targetVar]])))
+    formula_str <- paste(sprintf("as.factor(%s) ~", targetVar), paste(vars, collapse = " + "))
+    m <- randomForest(as.formula(formula_str),
+                      data = xtrain,
+                      ntree = nTrees,
+                      mtry = mtry, 
+                      strata = as.factor(xtrain[[targetVar]]),
+                      sampsize = sampsizes,
+                      na.action = na.roughfix,
+                      importance=TRUE)
+  }
   
   rownames(allpreds) <- 1:nrow(allpreds)
   rownames(results) <- 1:nrow(results)
@@ -762,9 +784,6 @@ dataPlot <- function(d, variables=list('x'=NULL, 'y'=NULL, 'group'=NULL), point_
     p <- p + geom_point(aes(x=.data[[xVar]], y=.data[[yVar]], colour=.data[[gVar]]), alpha=point_transparency, size=point_size)
   }
   
-  # Add labels and title
-  # The axis title and text themes are applied to both x and y axes if either xVar or yVar is present.
-  # This ensures consistent styling regardless of which variable is specified first.
   p <- p + theme(axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
                  axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
                  axis.text.x = element_text(size = axis_tick_fontsize),
@@ -809,8 +828,7 @@ dataPlot <- function(d, variables=list('x'=NULL, 'y'=NULL, 'group'=NULL), point_
             legend.text = element_text(size = legend_fontsize),
             legend.title = element_blank()) # Remove legend title and position at the top
     
-    # Apply the custom color scale using scale_color_manual
-    # If legend_names are provided, apply them as labels
+
     if (!is.null(legend_names)) {
       if (length(legend_names) != num_groups) {
         warning(paste("Number of manual legend labels (", length(legend_names), ") does not match number of groups (", num_groups, "). Labels may be misapplied or incomplete.", sep=""))
@@ -1076,8 +1094,103 @@ plotDecisionTree <- function(m, tree_num=1, nodeSize=4, nodeText=2, labelText=2,
   } else {
     return(list(p = plot_tree, savepath=NULL))
   }
-  
-  
 }
+
+showClassifications <- function(allPreds, load_model, select_group, t_start=0, window=NULL,
+                                point_size = 1, point_transparency=1, line_width=1, cumulative=FALSE,
+                                axis_title_margin=12, axis_title_fontsize=12, axis_tick_fontsize=10, 
+                                legend_fontsize=12, border_col=NULL, background='white') {
+  
+  sub <- subset(allPreds, allPreds[[groupVar]]==select_group)
+  sub$GMTStart <- as.POSIXct(sub$GMTStart,
+                               tryFormats = c("%d %B %Y %H:%M:%OS",
+                                              "%Y/%m/%d %H:%M:%OS",
+                                              "%Y-%m-%d %H:%M"),
+                               tz="GMT")
+  
+  sub <- sub[order(sub$GMTStart),]
+  rownames(sub) <- 1:nrow(sub)
+  t0 <- sub$GMTStart[1]
+  sub$seconds <- as.numeric(difftime(sub$GMTStart, t0))
+  
+  base_palette <- c('#E69F00', '#56B4E9', '#CC79A7', '#009E73', '#D55E00','#0072B2', '#E2D630')
+  final_palette <- base_palette
+    
+  if (length(load_model$classes) > length(base_palette)) {
+    colors_to_add <- length(load_model$classes) - length(base_palette)
+    
+    # Function to generate a random hex color
+    generate_random_hex_color <- function() {
+      paste0("#", paste(sample(c(0:9, LETTERS[1:6]), 6, replace = TRUE), collapse = ""))
+    }
+    
+    # Generate and add random colors
+    for (i in 1:colors_to_add) {
+      final_palette <- c(final_palette, generate_random_hex_color())
+    }
+  }
+  
+  if (cumulative == TRUE) {
+    for (label in load_model$classes) {
+      sub[[label]] <- cumsum(sub[[label]])
+    }
+  }
+  
+  log <- data.frame(time=sub$seconds)
+  for (label in load_model$classes) {
+    log[[label]] <- sub[[label]]
+  }
+  
+  log <- log %>%
+    pivot_longer(
+      cols = load_model$classes, 
+      names_to = "label",
+      values_to = "value")
+  
+  if (is.null(window)) {
+    window <- max(log$time)-t_start
+  }
+  
+  p <- ggplot(data=log, aes(x=time, y=value, colour=label)) + 
+    geom_line(lw=line_width, alpha=point_transparency) +
+    geom_point(size=point_size, alpha=point_transparency) +
+    xlim(c(t_start, (t_start+window))) + 
+    theme_bw() + 
+    xlab('Time (sec)') +
+    ylab('Classification probability (%)') +
+    labs(title=select_group) + 
+    theme(legend.position = "top",
+          legend.text = element_text(size = legend_fontsize),
+          title.text = element_text(size = axis_title_fontsize),
+          legend.title = element_blank())
+  
+  if (!is.null(background)) {
+    p <- p + theme(
+      panel.background = element_rect(fill = background),   # White background for the plotting panel
+      plot.background = element_rect(fill = background)    # White background for the entire plot area (including margins, titles, legend)
+    )
+  } else {
+    p <- p + theme(
+      panel.background = element_rect(fill = "transparent", colour = NA),
+      plot.background = element_rect(fill = "transparent", colour = NA)
+    )
+  }
+  
+  if (!is.null(border_col)) {
+    p <- p + theme(panel.border = element_rect(colour = border_col, fill=NA, linewidth=1))
+  } else {
+    p <- p + theme(panel.border = element_blank())
+  }
+  
+  p <- p + theme(axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
+                 axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
+                 axis.text.x = element_text(size = axis_tick_fontsize),
+                 axis.text.y = element_text(size = axis_tick_fontsize))
+  
+  p <- p + scale_color_manual(values = final_palette)
+  
+  print(p)
+}
+
 
 cat('\u2713 Done loading functions')

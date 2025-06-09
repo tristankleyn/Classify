@@ -1,55 +1,117 @@
 ---
 title: "Classify-delphinID"
+author: "Tristan Kleyn"
 format: html
 editor: visual
 ---
 
-**Load required functions:**
+# **Train and test delphinID classifier models**
+
+------------------------------------------------------------------------
+
+## ℹ️ About this notebook:
+
+This is a Quarto notebook of markdown and R code for developing and testing delphinID acoustic classifier models through transfer learning techniques. Required for this is a .sqlite3 database containing delphinID classifications of detections made in PAMGuard with the Whistle & Moan Detector and/or Click Detector.
+
+**With this notebook, you can:**
+
+-   Load and compile delphinID classifications of PAMGuard detections.
+
+-   Retrain a delphinID classifier on new prediction labels.
+
+-   Apply a saved classifier to predict new data.
+
+Throughout the notebook, there are many parameters that can be adjusted to tailor the analysis to your specific needs. Any line of code that is adjustable is denoted with this green square 🟩. It is advised to not adjust any code without a green square beside it. Different parameters involve different types of inputs. For example, the code cell below contains two adjustable parameters, one a binary variable (TRUE or FALSE) and one a character variable (any text input surrounded quotation marks). Code cells can be run by clicking the green triangle in the top right-hand corner. **Try running the code cell below.**
+
+```{r}
+a <- 'chicken' #🟩
+b <- 'egg' #🟩
+
+print_sentence <- TRUE #🟩
+
+if (print_sentence) {
+  cat(sprintf('The %s came before the %s.', a, b))
+}
+```
+
+The following "Setting up" section contains a code cell where general parameters used throughout the notebook can be adjusted. Look out for 🟩 symbols elsewhere for opportunities to tailor the analysis. Explanations for some parameters are provided within this notebook, while descriptions of all adjustable parameters can be found [here](https://github.com/tristankleyn/ClassifyStuff/tree/master).
+
+------------------------------------------------------------------------
+
+## ⚙️ Setting up
+
+**Run the cell below to source required functions:**
 
 ```{r}
 #| warning: false
+#| message: false
+
 source('Classify-delphinID_functions.R')
 ```
 
-**Settings:**
+**Specify the location of your .sqlite3 database containing PAMGuard detections:**
+
+-   **selectDB** \| path to PAMGuard database file (.sqlite3) containing detections.
+
+-   **cTable** \| name of database table containing delphinID click classifications
+
+-   **wTable** \| name of database table containing delphinID whistle classifications
 
 ```{r}
-rseed <- 42
-rds_files <- list.files(pattern = "\\.rds$") 
-
-selectDB <- 'pamguard/db2705'
+selectDB <- 'pamguard/SW2805.sqlite3' #🟩
 classifierType <- 'delphinID'
-classifierSelect <- NULL
-cTable <- 'Deep_Learning_Classifier___Clicks'
-wTable <- 'Deep_Learning_Classifier___Whistles'
+model <- readRDS(sprintf('EventClassifier_%s.rds', classifierType))
 
-evScore <- 0.0
-minClicks <- 0
-minWhistles <- 0
-AndOr <- 'or'
-dateRange <- c(Sys.Date() - 10652, Sys.Date())
-
+cTable <- 'Deep_Learning_Classifier___Clicks' #🟩
+wTable <- 'Deep_Learning_Classifier___Whistles' #🟩
 
 ```
 
+### Compile PAMGuard output, classify events
+
+The code below uses several functions to compile all delphinID classifications from the database and group them into distinct *acoustic events* for each different recording file analysed in the database (i.e. run through PAMGuard). Probabilities (per species) from all individual classifications within an event are averaged and divided by their sum to form event classification probabilities. Several parameters are available for filtering these events:
+
+-   **evScore** \| minimum decision score threshold below which event classifications are discarded.
+
+-   **minClicks** \| minimum number of click classifications below which event classifications are discarded.
+
+<!-- -->
+
+-   **minWhistles** \| minimum number of whistle classifications below which event classifications are discarded.
+
+-   **AndOr** \| require minWhistles 'AND' minClicks thresholds or minWhistles 'OR' minClicks thresholds.
+
+-   **dataRange** \| date range for filtering events.
+
+-   **export** \| whether or not to export event classification data to *classifications* folder (TRUE or FALSE)
+
+-   **verbose** \| whether or not to print information during loading (TRUE or FALSE)
+
+-   **plotType** \| type of plot outputted for visualizing event classifications ("Map" or "Counts")
+
 ```{r}
 #| warning: false
-set.seed(rseed)
-db_con <- dbConnect(RSQLite::SQLite(), sprintf('%s.sqlite3', selectDB))
-on.exit(dbDisconnect(db_con))
-dateRange <- dateRange
-model <- readRDS(sprintf('EventClassifier_%s.rds', classifierType))
-if (classifierType == 'ROCCA') {
-  infoEvents <- processdataRocca(db_con, dateRange,
-                                  verbose = FALSE)
-  
-} else if (classifierType == 'delphinID') {
-  infoEvents <- processdataDelphinID(db_con, dateRange, 
-                                     ctable = cTable, 
-                                     wtable = wTable, 
-                                     randseed = rseed,
-                                     verbose = FALSE)
-}
+#| message: false
+
+#CLASSIFICATION PARAMETERS
+evScore <- 0.0 #🟩
+minClicks <- 0 #🟩
+minWhistles <- 0 #🟩
+AndOr <- 'or' #🟩
+dateRange <- NULL #🟩
+export <- FALSE #🟩
+verbose <- FALSE #🟩
+
+eventInfo <- getEvents(selectDB = selectDB,
+                       classifierType = classifierType,
+                       wtable = wTable,
+                       ctable = cTable, 
+                       dateRange = dateRange,
+                       verbose = verbose)
+
+test_events <- eventInfo$test_events
+df_whistles <- eventInfo$df_whistles
+df_clicks <- eventInfo$df_clicks
 
 predInfo <- getClassifications(test_events = test_events,
                                model = model,
@@ -58,26 +120,27 @@ predInfo <- getClassifications(test_events = test_events,
                                minClicks = minClicks,
                                minWhistles = minWhistles,
                                AndOr = AndOr,
-                               export = TRUE)
+                               export = export)
 
-test_events <- infoEvents$df
-df_whistles <- infoEvents$df_whistles
-df_clicks <- infoEvents$df_clicks
+map <- plotClassifications(predInfo$preds, 
+                           predInfo$PCAdf, 
+                           classifierType=classifierType, 
+                           evScore = evScore,
+                           plotType = 'Map') #🟩
+   
 ```
 
-```{r}
-#| warning: false
-map <- plotClassifications(predInfo$preds, predInfo$PCAdf, plotType = 'Map',
-                    evScore = evScore, classifierType=classifierType)
-```
+------------------------------------------------------------------------
 
-**Load classification results, create new classifier**
+## 🚀 Train a new delphinID classifier
+
+Run the code cell below to show a list of *groupClassifications* .csv files saved in the *classifications* folder.
 
 ```{r}
 data_paths <- list()
 if ('classifications' %in% dir()) {
   for (item in dir('classifications')) {
-    if (grepl('.csv', item)) {
+    if (grepl('.csv', item) & !(grepl('barcode', item))) {
       name <- substr(item, 1, nchar(item)-4)
       data_paths[[name]] <- item
     }
@@ -87,17 +150,42 @@ if ('classifications' %in% dir()) {
 data_paths
 ```
 
-```{r}
-filename <- 'groupClassifications-0506251117'
-targetVar <- 'species'
-groupVar <- 'eventGroup'
-minClicks <- 0
-minWhistles <- 0
-AndOr <- 'or'
+These files listed store the event classifications compiled previously from PAMGuard database files - to create a new classifier, **you must add new information (i.e. labels) to a *groupClassifications* file.**
 
-info <- loadResults(filename, targetVar=targetVar, groupVar=groupVar,
-                    minClicks=0, minWhistles=0, AndOr='or', 
-                    plot_data=TRUE, verbose=FALSE)
+For example, you could add columns representing the true species label, recording date, or recording location. to the .csv file. In the code cell below, specify your target and grouping variables for classification and adjust other classification parameters to tailor your analysis to your needs:
+
+-   **filename** \| select a *groupClassifications* file name from the available files listed above
+
+-   **targetVar** \| target variable for classification (variable for prediction)
+
+-   **groupVar** \| grouping variable for classification (variable for grouping events prior to training/testing split)
+
+-   **minClicks** \| minimum number of click classifications below which events are discarded from training and testing
+
+-   **minWhistles** \| minimum number of whistle classifications below which events are discarded from training and testing
+
+-   **AndOr** \| whether to use minWhistles 'AND' minClicks thresholds or minWhistles 'OR' minClicks thresholds
+
+-   **plotData** \| whether or not to show a PCA plot of the *groupClassifications* data
+
+If **plotData** is set as TRUE, the code cell below will output a PCA plot showing event classifications color-coded by target variable level. The PCA is based on the twelve predictor variables used by delphinID, which represent event-level whistle and click classification probabilities for the set of Northeast Atlantic species the original delphinID models were trained for.
+
+```{r}
+filename <- 'groupClassifications-0606251332' #🟩
+targetVar <- 'species' #🟩
+groupVar <- 'eventGroup' #🟩
+minClicks <- 0 #🟩
+minWhistles <- 0 #🟩
+AndOr <- 'or' #🟩
+
+info <- loadResults(filename, 
+                    targetVar = targetVar, 
+                    groupVar = groupVar,
+                    minClicks = minClicks, 
+                    minWhistles = minWhistles, 
+                    AndOr = AndOr, 
+                    plot_data = TRUE, #🟩
+                    verbose = FALSE) #🟩
 
 data_cmb <- info$data
 vars <- info$variables
@@ -105,45 +193,49 @@ targets <- info$targets
 groups <- info$groups
 ```
 
+Finally, use the code cell below to train a new Random Forest classifier model on your new labels using the event predictor variables generated from the delphinID classifications. Several parameters can be adjusted:
+
+-   **mtry** \| number of predictor variables used per decision tree node in the Random Forest model
+
+-   **nodeSize** \| minimum number of events allowed in any terminal node of a decision tree in the Random Forest model
+
+-   **nTrees** \| number of decision trees in the Random Forest model
+
+-   **imputeTrain** \| minimum number of classifications (click or whistle) in an event below which predictor variable values are replaced with mean values from other events with the same targetVar but different groupVar (leave as zero to not use imputeTrain)
+
+-   **pruneTrain** \| percentage of events furthest from their target variable centroid to discard from training data
+
+-   **minGroupScore** \| minimum decision score threshold below which event classifications are discarded.
+
+-   **verbose** \| whether or not to print information during loading (TRUE or FALSE)
+
+-   **export** \| whether or not to export event classification results and classifier model (TRUE or FALSE)
+
+-   **savefolder** \| specify name of folder for exporting results to (leave as NULL to create new folder with current date and time)
+
+The code will output a confusion matrix table of event classifications, which shows true labels along the vertical axis and predicted labels along the horizontal axis. Counts (and percentages in parentheses) given in the table indicate correct classifications (along the diagonal) and incorrect classifications (off the diagonal).
+
 ```{r}
 library(randomForest)
 
-mtry <- NULL
-ns <- 5
-nTrees <- 1000
-impute <- 3
-prune <- 0
+mtry <- NULL #🟩
+nodeSize <- 5 #🟩
+nTrees <- 1000 #🟩
+imputeTrain <- 0 #🟩
+pruneTrain <- 0 #🟩
+minGroupScore <- 0.0 #🟩
 
 results <- trainClassifier(data_cmb, vars, 
                            targetVar = targetVar, 
                            groupVar = groupVar,
                            nTrees = nTrees,
                            mtry = mtry,
-                           ns = ns,
-                           prune = prune,
-                           impute = impute,
-                           verbose = FALSE)
-```
+                           ns = nodeSize,
+                           prune = pruneTrain,
+                           impute = imputeTrain,
+                           verbose = TRUE, #🟩
+                           export = FALSE, #🟩
+                           savefolder = savefolder) #🟩
 
-```{r}
-thrList <- seq(0,0.2,0.01)
-thrResults <- data.frame()
-
-count <- 1
-for (thr in thrList) {
-  sub <- subset(results, score >= thr)
-  accs <- c()
-  for (t in unique(results[[targetVar]])) {
-    subsub <- subset(sub, sub[[targetVar]]==t)
-    accs <- append(accs, sum(subsub$pred == subsub[[targetVar]])/nrow(subsub))
-  }
-  ovracc <- sum(sub$pred == sub[[targetVar]])/nrow(sub)
-  disc <- 1 - nrow(sub)/nrow(results)
-  row <- data.frame(id=count, minScore=thr, accOvr=ovracc, accMean=mean(accs), pDisc=disc)
-  thrResults <- rbind(thrResults, row)
-  rownames(thrResults) <- 1:nrow(thrResults)
-  count <- count + 1
-}
-
-thrResults
+summResults(results, targetVar=targetVar, minScore=minGroupScore)
 ```

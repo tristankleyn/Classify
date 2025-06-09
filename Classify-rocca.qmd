@@ -1,31 +1,48 @@
 ---
 title: "Classify"
+author: "Tristan Kleyn"
 format: html
 editor: visual
 ---
 
-## ❔ How to use this notebook:
+# Train and test ROCCA classifier models
 
-This is a Quarto notebook, written in R, designed to facilitate development of acoustic classifier models from .csv formatted training data. Quarto notebooks consist of code cells, which are shaded grey and can be run by clicking the green triangle at their upper right corners. Running a cell causes any code within to be executed and any outputs from the code will be displayed below the cell.
+------------------------------------------------------------------------
 
-**Run the cell below to see its output:**
+## ℹ️ About this notebook:
+
+This is a Quarto notebook composed of a mix of markdown and R code, designed to facilitate development of acoustic classifier models from output .csv files exported by the ROCCA (Real-time Odontocete Call Classification Algorithm) module in PAMGuard. This specific format is currently the only one usable for this notebook.
+
+**With this notebook, you can:**
+
+-   Load and compile ROCCA acoustic measurements for whistle and click detections in PAMGuard.
+
+-   Visualize your acoustic data by different ROCCA variables and data groupings.
+
+-   Train and test acoustic classifiers for any target variable (e.g. species, location)
+
+-   Save data tables, figures, and Random Forest classifier models (.rds)
+
+-   Apply saved Random Forest classifiers to predict new data
+
+Throughout the notebook, there are many parameters that can be adjusted to tailor the analysis to your specific needs. Any line of code that is adjustable is denoted with this green square 🟩. It is advised to not adjust any code without a green square beside it. Different parameters involve different types of inputs. For example, the code cell below contains two adjustable parameters, one a binary variable (TRUE or FALSE) and one a character variable (any text input surrounded quotation marks). Code cells can be run by clicking the green triangle in the top right-hand corner. Try running the code cell below.
 
 ```{r}
 x <- 'cows are black and white.'
-print(x)
+
+INSERT <- 'Some' #🟩
+print_sentence <- FALSE #🟩
+
+if (print_sentence) {
+  cat(paste(INSERT, x))
+}
 ```
 
-A benefit of this format is that both the code and its output are visible simultaneously. Code can be adjusted to change parameters and labels as needed.
+The following "Setting up" section contains a code cell where general parameters used throughout the notebook can be adjusted. Look out for 🟩 symbols elsewhere for opportunities to tailor the analysis. Explanations for some parameters are provided within this notebook, while descriptions of all adjustable parameters can be found [here](https://github.com/tristankleyn/ClassifyStuff/tree/master).
 
-**Try changing the variable INSERT below:**
+------------------------------------------------------------------------
 
-```{r}
-x <- 'cows are black and white.'
-INSERT <- 'Some'
-print(paste(INSERT, x))
-```
-
-## ⚙️ (1) Setting up
+## ⚙️ Setting up
 
 The first steps for this analysis are to source the functions needed for the analysis and to read in your .csv formatted data.
 
@@ -33,35 +50,36 @@ The first steps for this analysis are to source the functions needed for the ana
 
 ```{r}
 #| warning: false
+#| message: false
 
-suppressWarnings(source('Classify_functions.R'))
+suppressWarnings(source('Classify-rocca_functions.R'))
 ```
 
 **Set your plotting aesthetics by adjusting the parameters listed in the code cell below:**
 
 ```{r}
 #GENERAL PLOT SETTINGS
-point_size <- 2
-point_transparency <- 0.7
-line_width <- 1
-border_col <- 'navy'
-axis_title_names <- NULL
-axis_title_fontsize <- 12
-axis_title_margin <- 1
-axis_tick_fontsize <- 10
-legend_names <- NULL
-legend_fontsize <- 12
-grid_lines <- 'h'
+point_size <- 2 #🟩
+point_transparency <- 0.7 #🟩
+line_width <- 1 #🟩
+border_col <- NULL #🟩
+background <- 'white' #🟩
+axis_title_names <- NULL #🟩
+axis_title_fontsize <- 12 #🟩
+axis_title_margin <- 1 #🟩
+axis_tick_fontsize <- 10 #🟩
+legend_names <- NULL #🟩
+legend_fontsize <- 12 #🟩
 
 #DECISION TREE PLOT SETTINGS
-tree_node_pointsize <- 4
-tree_node_fontsize <- 4
+tree_node_pointsize <- 4 #🟩
+tree_node_fontsize <- 4 #🟩
 
 #EXPORT SETTINGS
-export <- FALSE
-savefolder <- 'results04062025-1'
-plot_dims <- c(8,6)
-plot_DPI <- 600
+export <- FALSE #🟩
+savefolder <- 'results04062025-1' #🟩
+plot_dims <- c(8,6) #🟩
+plot_DPI <- 600 #🟩
 
 
 
@@ -69,47 +87,9 @@ plot_DPI <- 600
 
 ### Reading in your data
 
-Your .csv formatted data should be structured in a hierarchy of folders, where levels of the hierarchy represent different types of information such as location, species, year, etc. The example below shows a hierarchical data structure of folders organized by species, location, and recording. The .csv data should be kept in the lowest level of the structure (e.g. recording).
+You can either load your data from a nested hierarchy of folders containing RoccaContourStats .csv files or from one single RoccaContourStats .csv files. The former option is useful for grouping your data by different categories (e.g. encounters, locations, recordings). If loading data from a single .csv file, the only categorical variables available for analysis will be the EncounterNumber and KnownSpecies stored within the .csv itself. Below is an example of how you can structure a nested hierarchy of .csv files to preserve different types of categorical information in your data:
 
-#### **└──** SpeciesA
-
-#### Location1
-
-Recording01-01-2025
-
-Recording04-01-2025
-
-Recording06-01-2025
-
-Recording07-01-2025
-
-#### Location2
-
-Recording14-01-2025
-
-Recording15-01-2025
-
-#### **└──** SpeciesB
-
-#### Location2
-
-Recording25-01-2025
-
-#### Location3
-
-Recording27-01-2025
-
-#### **└──** SpeciesC
-
-#### Location1
-
-Recording09-01-2025
-
-Recording11-01-2025
-
-Recording31-01-2025
-
-Before reading in your data using the *loadDataFromHier()* function in the cell below, make sure that you specify the following required variables:
+Before reading in your data using the code below, make sure you specify the following variables:
 
 -   **root_directory** \| folder where your data is located. [Example:]{.underline} "C:/Users/Bob/Desktop/Data"
 
@@ -132,16 +112,16 @@ Before reading in your data using the *loadDataFromHier()* function in the cell 
 This cell provides output in two different panels, which you can click between. The first shows a table of all variables identified in your data along with their average values for each category of your first hierarchical variable. The second panels provides a summary of the data loaded.
 
 ```{r}
-root_directory <- "UKData"
-from_folders <- TRUE
-levels <- c('species', 'location', 'encounter', 'recording')
+root_directory <- "UKData" #🟩
+from_folders <- TRUE #🟩
+levels <- c('species', 'location', 'encounter', 'recording') #🟩
 
-vocType = 'whistle'
+vocType = 'whistle' #🟩
 omitVars <- c('DCQUARTER1MEAN', 'DCQUARTER2MEAN', 'DCQUARTER3MEAN',
-              'DCQUARTER4MEAN', 'DCMEAN', 'DCSTDDEV', 'RMSSIGNAL')
+              'DCQUARTER4MEAN', 'DCMEAN', 'DCSTDDEV', 'RMSSIGNAL', 'OVERLAP') #🟩
 
-filterVars_min <- list()
-filterVars_max <- list()
+filterVars_min <- list() #🟩
+filterVars_max <- list() #🟩
 
 info <- loadDataFromHier(root_directory, from_folders=from_folders, 
                          levels=levels, vocType=vocType, omitVars=omitVars,
@@ -153,7 +133,9 @@ variables <- info[[2]]
 
 ```
 
-## 🔎 (2) Explore your data
+------------------------------------------------------------------------
+
+## 📊 Explore your data
 
 **Customize and run the cell below to visualize your data according to different variables.**
 
@@ -174,15 +156,11 @@ The following parameters can be adjusted:
 -   **resultsFolder** \| specific folder to save plots to. To create new folder, leave resultsFolder as NULL.
 
 ```{r}
-#| fig-height: 7
-#| fig-width: 10
-VARIABLE1 <- 'FREQBEG'
-VARIABLE2 <- 'FREQEND'
-targetVar <- 'species'
-
-export = FALSE
-resultsFolder = NULL
-
+#| fig-height: 7 #🟩
+#| fig-width: 10 #🟩
+VARIABLE1 <- 'FREQBEG' #🟩
+VARIABLE2 <- 'FREQEND' #🟩
+targetVar <- 'species' #🟩
 
 dataPlot(d = allData, 
          variables = list('x' = VARIABLE1, 'y' = VARIABLE2, 'group' = targetVar),
@@ -202,7 +180,9 @@ dataPlot(d = allData,
          plot_DPI = plot_DPI)
 ```
 
-## 📊 (3) Train and test classifier models
+------------------------------------------------------------------------
+
+## 🚀 Train and test classifier models
 
 **Train a classifier model on your data.** The next code cell is for training a classifier model using your data. Here, several parameters can be adjusted to tweak the design and training of your model:
 
@@ -214,7 +194,7 @@ dataPlot(d = allData,
 
 -   **pruneTrain** \| proportion (0-1) of training data to prune out using PCA-based pruning (see supplementary information for more detail). [Example:]{.underline} 0.10
 
--   **minScore** \| minimum decision score (0-1) for keeping classifications (see supplementary information for more detail). [Example:]{.underline} 0.05
+-   **minScore** \| minimum decision score (0-1) for keeping individual classifications (see supplementary information for more detail). [Example:]{.underline} 0.05
 
 -   **select** \| vector of select groups to restrict training and testing to (leave as c() to not select any). [Example:]{.underline} c("Location1", "Location2")
 
@@ -224,22 +204,22 @@ dataPlot(d = allData,
 #| warning: false
 
 # CLASSIFICATION SETUP
-targetVar <- 'species'
-groupVar <- 'encounter'
-nMax <- 25
-pruneTrain <- 0
-minScore <- 0.02
-selectGroups <- c()
-omitGroups <- list()
+targetVar <- 'species' #🟩
+groupVar <- 'encounter' #🟩
+nMax <- 25 #🟩
+pruneTrain <- 0 #🟩
+minScore <- 0.02 #🟩
+selectGroups <- c() #🟩
+omitGroups <- list() #🟩
 
-nTrees <- 500
-mTry <- NULL
-nodeSize <- 25
+nTrees <- 500 #🟩
+mTry <- NULL #🟩
+nodeSize <- 25 #🟩
 
 info <- classifyData(allData, vars=variables, targetVar=targetVar, 
                      groupVar=groupVar, nMax=nMax, prune=pruneTrain, 
                      nTrees=nTrees, mtry=mTry, node_size=nodeSize,
-                     minScore=minScore, select_groups=select_groups, 
+                     minScore=minScore, select_groups=selectGroups, 
                      omit=omitGroups)
 
 
@@ -252,8 +232,17 @@ model <- info$model
 
 Again, the output is shown in two panels below. The first panel gives a confusion matrix table of true labels against predicted labels, where correct classifications are shown along the diagonal. The second panel gives a written summary of overall and mean classification accuracy.
 
+-   **minGroupScore \|** minimum decision threshold for group predictions.
+
+-   **Classifications discarded \|** percentage of classifications below score threshold and discarded.
+
+-   **Overall accuracy \|** percentage of total classifications that are correct.
+
+-   **Mean species accuracy \|** average accuracy (percentage correct classification) across species.
+
 ```{r}
-summResults(groupPreds, targetVar=targetVar, minScore=0.0)
+minGroupScore <- 0.0 #🟩
+summResults(groupPreds, targetVar=targetVar, minScore=minGroupScore)
 ```
 
 **Visualize classifier performance by running the below cell.**
@@ -261,8 +250,8 @@ summResults(groupPreds, targetVar=targetVar, minScore=0.0)
 The three output panels here show different aspect of the classification results. The first (left) panel shows variable importance in terms of Gini impurity decrease of the 15 most important variables used by the model. The second (middle) panel shows a scatter plot of classification accuracy against the % of predictions discarded using increasing minimum decision score thresholds. The third (right) panel shows overall accuracy, mean accuracy, and % of predictions classified at increasing minimum decision score thresholds.
 
 ```{r}
-#| fig-height: 6
-#| fig-width: 9
+#| fig-height: 6 #🟩
+#| fig-width: 9 #🟩
 
 plot_info <- plotResults(groupPreds, allPreds,
                          model=model, targetVar=targetVar, thrMax=0.10,
@@ -282,12 +271,12 @@ plot_info <- plotResults(groupPreds, allPreds,
 ```
 
 ```{r}
-#| fig-width: 30      
-#| fig-height: 15    
-#| out-width: "100%" 
-#| out-height: "auto" 
+#| fig-width: 30 #🟩      
+#| fig-height: 15 #🟩    
+#| out-width: "100%" #🟩 
+#| out-height: "auto" #🟩 
 
-trees_to_plot <- 1:10
+trees_to_plot <- 1:10 #🟩
 
 for (index in trees_to_plot) {
   plot_tree <- plotDecisionTree(model, 
@@ -304,75 +293,82 @@ for (index in trees_to_plot) {
 
 ```
 
-## 📥 (4) Export results
+------------------------------------------------------------------------
 
-Run the cell below to export your data, results, and figures. These will be saved to a **classificationResults** folder in the same directory as this notebook containing the following items:
-
--   **figures** \| folder containing your classification results plots
-
--   **classifier.rds** \| Random Forest classifier model
-
--   **allData.csv** \| Table of individual classifications
-
--   **allPredictions.csv** \| Table of individual classifications and their acoustic variables
-
--   **groupPredictions.csv** \| Table of group classifications
+## 🔎 Apply saved classifiers to new data
 
 ```{r}
-figWidth <- 8
-figHeight <- 6
-figDPI <- 400
+data_dir <- 'pamguard/detections060625'
+from_folders <- TRUE #🟩
+levels <- c('location', 'recording') #🟩
+
+vocType = 'whistle' #🟩
+omitVars <- c('DCQUARTER1MEAN', 'DCQUARTER2MEAN', 'DCQUARTER3MEAN',
+              'DCQUARTER4MEAN', 'DCMEAN', 'DCSTDDEV', 'RMSSIGNAL', 'OVERLAP') #🟩
+
+filterVars_min <- list() #🟩
+filterVars_max <- list() #🟩
+
+info <- loadDataFromHier(data_dir, from_folders=from_folders, 
+                         levels=levels, vocType=vocType, omitVars=omitVars,
+                         filterVarsMin = filterVars_min,
+                         filterVarsMax = filterVars_max)
+
+allData <- info[[1]]
+variables <- info[[2]]
+```
+
+```{r}
+load_model <- readRDS('results04062025-1/classifier.rds')
+
+# CLASSIFY NEW DATA
+groupVar <- 'recording' #🟩
+minScore <- 0.0 #🟩
+selectGroups <- c() #🟩
+omitGroups <- list() #🟩
+
+info <- classifyData(allData, 
+                     vars = variables, 
+                     targetVar = NULL, 
+                     load_model = load_model,
+                     groupVar = groupVar, 
+                     minScore = minScore, 
+                     select_groups = selectGroups, 
+                     omit = omitGroups)
 
 
-dirName <- makeDirSysDT(create=FALSE)
-if (!dirName %in% dir()) {
-  dirName <- makeDirSysDT(create=TRUE)
+groupPreds <- info$groupPreds
+allPreds <- info$allPreds
+model <- info$model
+data.table(groupPreds)
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| fig-height: 4 #🟩
+#| fig-width: 8 #🟩
+
+select_groups <- NULL #🟩
+
+if (is.null(select_groups)) {
+  select_groups <- unique(allPreds[[groupVar]])
 }
-if (!'figures' %in% dir(dirName)) {
-  dir.create(sprintf('%s/figures', dirName))
+
+for (select_group in select_groups) {
+  showClassifications(allPreds,
+                    load_model = load_model,
+                    select_group = select_group,
+                    cumulative = TRUE,
+                    point_size = 2.5,
+                    point_transparency = 0.5,
+                    line_width = line_width,
+                    axis_title_fontsize = 16,
+                    axis_title_margin = 12,
+                    axis_tick_fontsize = 13,
+                    legend_fontsize = 14,
+                    border_col = border_col,
+                    background = background)
 }
 
-if (exists('allData')) {
-  write.csv(allData, sprintf('%s/allData.csv', dirName), 
-            row.names=FALSE)
-}
-
-if (exists('groupPreds')) {
-  write.csv(groupPreds, sprintf('%s/groupPredictions.csv', dirName), 
-            row.names=FALSE)
-}
-
-if (exists('allPreds')) {
-  write.csv(allPreds, sprintf('%s/allPredictions.csv', dirName), 
-            row.names=FALSE)
-}
-
-if (exists('plot_info')) {
-  if (is.list(plot_info)) {
-    ggsave(sprintf('%s/figures/performanceThresholds.png', dirName), 
-           plot=plot_info$plotOverall, 
-           width=figWidth, height=figHeight, units="in", dpi=figDPI)
-    
-    ggsave(sprintf('%s/figures/performanceGroups.png', dirName), 
-           plot=plot_info$plotGroups, 
-           width=figWidth, height=figHeight, units="in", dpi=figDPI)
-    
-    write.csv(plot_info$varImportance, 
-              sprintf('%s/variableImportance.csv', dirName), 
-              row.names = TRUE)
-    
-  }
-}
-
-if (exists('plot_tree')) {
-  ggsave(sprintf('%s/figures/performanceGroups.png', dirName), 
-         plot=plot_tree, 
-         width=figWidth, height=figHeight, units="in", dpi=figDPI)
-}
-
-if (exists('model')) {
-  saveRDS(model, sprintf('%s/classifier.rds', dirName))
-}
-
-cat(sprintf('Saved results to %s.', dirName))
 ```

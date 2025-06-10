@@ -15,10 +15,10 @@ This repository contains a Quarto notebook designed to facilitate training and t
 > #### └── [Classify-rocca_functions.R](https://github.com/tristankleyn/ClassifyStuff/blob/master/Classify-rocca_functions.R)
 > Required functions for Classify-rocca.qmd
 
-> #### └── [Classify-rocca.qmd](https://github.com/tristankleyn/ClassifyStuff/blob/master/Classify-delphinID.qmd)
+> #### └── [Classify-delphinID.qmd](https://github.com/tristankleyn/ClassifyStuff/blob/master/Classify-delphinID.qmd)
 > User-friendly Quarto notebook for developing delphinID (deep learning) acoustic classifiers.
 
-> #### └── [Classify-rocca_functions.R](https://github.com/tristankleyn/ClassifyStuff/blob/master/Classify-delphinID_functions.R)
+> #### └── [Classify-delphinID_functions.R](https://github.com/tristankleyn/ClassifyStuff/blob/master/Classify-delphinID_functions.R)
 > Required functions for Classify-delphinID.qmd
 
 > #### └── [PARAMETERS.md](https://github.com/tristankleyn/ClassifyStuff/blob/master/PARAMETERS.md)

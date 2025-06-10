@@ -22,7 +22,7 @@ This repository contains a Quarto notebook designed to facilitate training and t
 > Required functions for Classify-delphinID.qmd
 
 > #### └── [PARAMETERS.md](https://github.com/tristankleyn/ClassifyStuff/blob/master/PARAMETERS.md)
-> Appendix of adjustable parameters in Classify.qmd
+> Appendix of adjustable parameters in qmd notebooks
 
 
 <br>

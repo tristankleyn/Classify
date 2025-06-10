@@ -442,8 +442,8 @@ getEvents <- function(selectDB, classifierType='delphinID', dateRange=NULL, verb
   return(list(test_events=test_events, df_whistles=df_whistles, df_clicks=df_clicks))
 }
 
-getClassifications <- function(test_events, model, classifierType='delphinID', 
-                           evScore=0, minClicks=0, minWhistles=0, AndOr='or', export = FALSE, savefolder = NULL) {
+getClassifications <- function(test_events, model, classifierType='delphinID', evScore=0, minClicks=0, minWhistles=0, AndOr='or', 
+                               export = FALSE, savefolder = NULL, append_to_file=NULL) {
   rownames(test_events) <- 1:nrow(test_events)
   test_events$uid <- 1:nrow(test_events)
   bc <- test_events$barcode
@@ -533,13 +533,44 @@ getClassifications <- function(test_events, model, classifierType='delphinID',
   info <- list(preds=preds, allpreds=allpreds, PCAdf=PCAdf)
   preds$barcode <- as.character(preds$barcode)
   
+  newdata <- data.frame()
+  for (i in 1:nrow(preds)) {
+    cols <- names(preds)
+    row <- list()
+    for (col in cols) {
+      row[[col]] <- preds[[col]][i]
+    }
+    row <- data.frame(row)
+    bc <- preds$barcode[i]
+    vals <- c()
+    for (j in seq(1, 24, 2)) {
+      vals <- append(vals, as.integer(substr(bc, j, (j+1)))/100)
+    }
+    vals <- t(as.data.frame(vals))
+    rownames(vals) <- c(1)
+    colnames(vals) <- paste0('VAR', 1:length(vals))
+    row <- cbind(row, vals)
+    newdata <- rbind(newdata, row)
+    rownames(newdata) <- 1:nrow(newdata)
+  }
+  
+  preds <- newdata
   
   if (export==TRUE) {
-    current_date <- format(Sys.Date(), "%d%m%y")
-    current_time <- format(Sys.time(), "%H%M")
-    
-    write.csv(preds, sprintf('classifications/groupClassifications-%s%s.csv', current_date, current_time), row.names = FALSE)
-    write.csv(preds, sprintf('classifications/groupClassifications-%s%s-barcodes.csv', current_date, current_time), row.names = FALSE)
+    if (!is.null(append_to_file)) {
+      existing_data <- read.csv(sprintf('classifications/%s.csv', append_to_file), fill=TRUE)
+      max_uid <- max(existing_data$uid)
+      if (ncol(existing_data) == ncol(preds)) {
+        rownames(preds) <- (max_uid + 1):(max_uid + nrow(preds))
+        new_data <- rbind(existing_data, preds)
+        write.csv(new_data, sprintf('classifications/%s.csv', append_to_file), row.names = FALSE)
+      }
+    } else {
+      current_date <- format(Sys.Date(), "%d%m%y")
+      current_time <- format(Sys.time(), "%H%M")
+      
+      write.csv(preds, sprintf('classifications/groupClassifications-%s%s.csv', current_date, current_time), row.names = FALSE)
+    }
   }
   
   return(info)
@@ -716,10 +747,7 @@ imputeData <- function(data, targetVar, groupVar, impLim=2, verbose=FALSE) {
 loadResults <- function(filename, targetVar='species', groupVar='encID', samples_omit=NULL, startVar='VAR1', endVar='VAR12',
                         minClicks=0, minWhistles=0, AndOr='or', plot_data=TRUE, verbose=FALSE) {
   
-  path <- data_paths[[filename]]
-  data_cmb <- read.csv(sprintf('classifications/%s', path), fill=TRUE)
-  barcode_data <- read.csv(sprintf('classifications/%s-barcodes.csv', filename), fill=TRUE)
-  
+  data_cmb <- read.csv(sprintf('classifications/%s.csv', filename), fill=TRUE)
   if (!targetVar %in% colnames(data_cmb)) {
     stop(sprintf('%s not found in table.\n', targetVar))
   }
@@ -727,27 +755,10 @@ loadResults <- function(filename, targetVar='species', groupVar='encID', samples
     stop(sprintf('%s not found in table.\n', groupVar))
   }
   
-  if (!'barcode' %in% colnames(data_cmb)) {
-    stop('Feature vector (barcode) not found in table.\n')
-  }
-  
   if (!'eventID' %in% colnames(data_cmb)) {
     stop('eventID not found in table.\n')
   }
-  
-  readType <- c()
-  for (name in names(data_cmb)) {
-    if (name %in% colnames(barcode_data)) {
-      if (name %in% c('minutes', 'score', 'prom', 'conf', 'whistles', 'clicks', 'uid')) {
-        readType <- append(readType, 'numeric')
-      } else {
-        readType <- append(readType, "character")
-      }
-    }
-  }
 
-  data_cmb <- read.csv(sprintf('classifications/%s', path), fill=TRUE)
-  barcode_data <- read.csv(sprintf('classifications/%s-barcodes.csv', filename), fill=TRUE, colClasses = readType)
   targets <- unique(data_cmb[[targetVar]])[order(unique(data_cmb[[targetVar]]))]
   for (target in targets) {
     sub <- subset(data_cmb, data_cmb[[targetVar]] == target)
@@ -776,23 +787,21 @@ loadResults <- function(filename, targetVar='species', groupVar='encID', samples
     row <- data.frame(uid=i, target=sp, group=enc, eventID=data_cmb$eventID[i], 
                       clicks=data_cmb$clicks[i], whistles=data_cmb$whistles[i], minutes=data_cmb$minutes[i], barcode=data_cmb$barcode[i])
     
-    bc <- barcode_data$barcode[i]
-    vals <- c()
-    for (j in seq(1, 24, 2)) {
-      vals <- append(vals, as.integer(substr(bc, j, (j+1)))/100)
+    row1 <- list()
+    for (var in paste0('VAR', 1:12)) {
+      row1[[var]] <- data_cmb[[var]][i]
     }
-    vals <- t(as.data.frame(vals))
-    rownames(vals) <- c(1)
-    colnames(vals) <- paste0('VAR', 1:length(vals))
-    row <- cbind(row, vals)
+    row1 <- data.frame(row1)
+    row <- cbind(row, row1)
     newdata <- rbind(newdata, row)
     rownames(newdata) <- 1:nrow(newdata)
   }
   
   data_cmb <- newdata
-  data_cmb <- data_cmb %>%
-    rename_with(~ targetVar, .cols = "target") %>%
-    rename_with(~ groupVar, .cols = "group")
+  data_cmb <- data_cmb %>% rename_with(~ targetVar, .cols = "target")
+  if (groupVar != 'eventID') {
+    data_cmb <- data_cmb %>% rename_with(~ groupVar, .cols = "group")
+  }
   
   targets <- unique(data_cmb[[targetVar]])
   groups <- unique(data_cmb[[groupVar]])
@@ -927,14 +936,14 @@ summResults <- function(df, targetVar, minScore=0, digits = 2) {
   if (!is.data.frame(df)) {
     stop("Input 'df' must be a data.frame.")
   }
-  if (!all(c("species", "pred") %in% names(df))) {
-    stop("Input 'df' must contain columns named 'species' and 'pred'.")
+  if (!all(c(targetVar, "pred") %in% names(df))) {
+    stop(sprintf("Input 'df' must contain columns named '%s' and 'pred'.", targetVar))
   } else {
-    df$species <- as.factor(df$species)
+    df[[targetVar]] <- as.factor(df[[targetVar]])
     df$pred <- as.factor(df$pred)
   }
-  if (!is.factor(df$species) || !is.factor(df$pred)) {
-    stop("Columns 'species' and 'pred' must be of class factor.")
+  if (!is.factor(df[[targetVar]]) || !is.factor(df$pred)) {
+    stop(sprintf("Columns '%s' and 'pred' must be factors.", targetVar))
   }
   
   df <- subset(df, score >= minScore)
@@ -953,7 +962,7 @@ summResults <- function(df, targetVar, minScore=0, digits = 2) {
   acc_mean <- mean(acc_mean)
   
   # 2. Create the confusion matrix as a data.table
-  conf_matrix_dt <- as.data.table(table(df$species, df$pred))
+  conf_matrix_dt <- as.data.table(table(df[[targetVar]], df$pred))
   setnames(conf_matrix_dt, c("Actual", "Predicted", "Count"))
   
   # 3. Calculate percentages

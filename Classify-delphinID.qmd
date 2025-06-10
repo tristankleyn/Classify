@@ -58,7 +58,7 @@ source('Classify-delphinID_functions.R')
 -   **wTable** \| name of database table containing delphinID whistle classifications
 
 ```{r}
-selectDB <- 'pamguard/SW2805.sqlite3' #🟩
+selectDB <- 'pamguard/dcl0206.sqlite3' #🟩
 classifierType <- 'delphinID'
 model <- readRDS(sprintf('EventClassifier_%s.rds', classifierType))
 
@@ -74,8 +74,6 @@ The code below uses several functions to compile all delphinID classifications f
 -   **evScore** \| minimum decision score threshold below which event classifications are discarded.
 
 -   **minClicks** \| minimum number of click classifications below which event classifications are discarded.
-
-<!-- -->
 
 -   **minWhistles** \| minimum number of whistle classifications below which event classifications are discarded.
 
@@ -99,8 +97,10 @@ minClicks <- 0 #🟩
 minWhistles <- 0 #🟩
 AndOr <- 'or' #🟩
 dateRange <- NULL #🟩
-export <- FALSE #🟩
+export <- TRUE #🟩
+append_to_file <- 'groupClassifications-0906251608'
 verbose <- FALSE #🟩
+
 
 eventInfo <- getEvents(selectDB = selectDB,
                        classifierType = classifierType,
@@ -120,7 +120,8 @@ predInfo <- getClassifications(test_events = test_events,
                                minClicks = minClicks,
                                minWhistles = minWhistles,
                                AndOr = AndOr,
-                               export = export)
+                               export = export,
+                               append_to_file = append_to_file)
 
 map <- plotClassifications(predInfo$preds, 
                            predInfo$PCAdf, 
@@ -171,9 +172,9 @@ For example, you could add columns representing the true species label, recordin
 If **plotData** is set as TRUE, the code cell below will output a PCA plot showing event classifications color-coded by target variable level. The PCA is based on the twelve predictor variables used by delphinID, which represent event-level whistle and click classification probabilities for the set of Northeast Atlantic species the original delphinID models were trained for.
 
 ```{r}
-filename <- 'groupClassifications-0606251332' #🟩
-targetVar <- 'species' #🟩
-groupVar <- 'eventGroup' #🟩
+filename <- 'groupClassifications-0906251608' #🟩
+targetVar <- 'label' #🟩
+groupVar <- 'eventID' #🟩
 minClicks <- 0 #🟩
 minWhistles <- 0 #🟩
 AndOr <- 'or' #🟩
@@ -223,7 +224,7 @@ nodeSize <- 5 #🟩
 nTrees <- 1000 #🟩
 imputeTrain <- 0 #🟩
 pruneTrain <- 0 #🟩
-minGroupScore <- 0.0 #🟩
+minGroupScore <- 0.02 #🟩
 
 results <- trainClassifier(data_cmb, vars, 
                            targetVar = targetVar, 
@@ -233,7 +234,7 @@ results <- trainClassifier(data_cmb, vars,
                            ns = nodeSize,
                            prune = pruneTrain,
                            impute = imputeTrain,
-                           verbose = TRUE, #🟩
+                           verbose = FALSE, #🟩
                            export = FALSE, #🟩
                            savefolder = savefolder) #🟩
 

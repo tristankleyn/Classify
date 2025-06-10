@@ -7,6 +7,26 @@ suppressWarnings(library(tidyr))
 suppressWarnings(library(igraph))
 suppressWarnings(library(ggraph))
 
+checkReq <- function(packages_to_install) {
+  # Remove any empty lines or comments (lines starting with #)
+  packages_to_check <- packages_to_check[nchar(packages_to_check) > 0]
+  packages_to_check <- packages_to_check[!grepl("^#", packages_to_check)]
+  
+  # Loop through the packages, install if not present
+  for (pkg in packages_to_check) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      message(paste("Package '", pkg, "' not found. Installing now...", sep = ""))
+      install.packages(pkg, dependencies = TRUE)
+      message(paste("Package '", pkg, "' installed successfully.", sep = ""))
+    } else {
+      message(paste("Package '", pkg, "' is already installed.", sep = ""))
+    }
+  }
+  
+  message("\nAll specified packages have been checked. Missing packages were installed.")
+  
+}
+
 
 summData <- function(data, hierarchy) {
   if (!is.data.table(data)) {
@@ -485,7 +505,6 @@ plotResults <- function(results, results_all, model, targetVar, show_vars=15, th
              col = "steelblue") 
   
   p2 <- ggplot(data = subALL) +
-    theme_bw() +
     geom_line(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy'), lw=line_width) +
     geom_point(aes(x = minScore, y = ovr_acc, colour = 'Overall accuracy'), size=point_size, alpha=point_transparency) +
     geom_line(aes(x = minScore, y = mean_acc, colour = 'Mean accuracy'), lw=line_width) +
@@ -502,18 +521,19 @@ plotResults <- function(results, results_all, model, targetVar, show_vars=15, th
     ylab(NULL) + 
     ylim(c(0,100)) +
     theme(
-      axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
-      axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
+      axis.title.x = element_text(face = "bold", margin = ggplot2::margin(t = axis_title_margin), size=axis_title_fontsize),
+      axis.title.y = element_text(face = "bold", margin = ggplot2::margin(r = axis_title_margin), size=axis_title_fontsize),
       axis.text.x = element_text(size = axis_tick_fontsize),
       axis.text.y = element_text(size = axis_tick_fontsize),
       legend.position = "top",
       legend.box = "horizontal",
       legend.justification = "left",
-      legend.text = element_text(size = legend_fontsize)
+      legend.text = element_text(size = legend_fontsize),
+      panel.grid.major = element_line(colour = "grey90", linetype = "solid"),
+      panel.grid.minor = element_line(colour = "grey95", linetype = "solid")
     )
   
   p3 <- ggplot(data = RetAcc, aes(x = retention, y = ovr_acc, group = label, colour = label, size = label, alpha = label)) +
-    theme_bw() +
     geom_point(size=point_size, alpha=point_transparency, pch=16) +
     scale_color_manual(values = label_colors) +
     scale_size_manual(values = label_sizes) +
@@ -525,11 +545,13 @@ plotResults <- function(results, results_all, model, targetVar, show_vars=15, th
     theme(
       legend.position = "top",
       legend.title = element_blank(),
-      axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
-      axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
+      axis.title.x = element_text(face = "bold", margin = ggplot2::margin(t = axis_title_margin), size=axis_title_fontsize),
+      axis.title.y = element_text(face = "bold", margin = ggplot2::margin(r = axis_title_margin), size=axis_title_fontsize),
       axis.text.x = element_text(size = axis_tick_fontsize),
       axis.text.y = element_text(size = axis_tick_fontsize),
-      legend.text = element_text(size = legend_fontsize)
+      legend.text = element_text(size = legend_fontsize),
+      panel.grid.major = element_line(colour = "grey90", linetype = "solid"),
+      panel.grid.minor = element_line(colour = "grey95", linetype = "solid")
     ) +
     guides(colour = guide_legend(nrow = 1)) # Forces labels to be in a single row
   
@@ -772,6 +794,13 @@ dataPlot <- function(d, variables=list('x'=NULL, 'y'=NULL, 'group'=NULL), point_
   
   p <- ggplot(data=d) + theme_bw() # Initialize ggplot and the base theme
   
+  p <- p + theme(axis.title.x = element_text(face = "bold", margin = ggplot2::margin(t = axis_title_margin), size=axis_title_fontsize),
+                 axis.title.y = element_text(face = "bold", margin = ggplot2::margin(r = axis_title_margin), size=axis_title_fontsize),
+                 axis.text.x = element_text(size = axis_tick_fontsize),
+                 axis.text.y = element_text(size = axis_tick_fontsize),
+                 panel.grid.major = element_line(colour = "grey90", linetype = "solid"),
+                 panel.grid.minor = element_line(colour = "grey95", linetype = "solid"))
+  
   if (!is.null(border_col)) {
     p <- p + theme(panel.border = element_rect(colour = border_col, fill=NA, linewidth=1))
   } else {
@@ -779,15 +808,12 @@ dataPlot <- function(d, variables=list('x'=NULL, 'y'=NULL, 'group'=NULL), point_
   }
   
   if (num_var == 1) {
-    p <- p + geom_density(aes(x=.data[[xVar]], linewidth=line_width, colour=.data[[gVar]])) # Corrected 'lw' to 'linewidth' for geom_density
+    p <- p + geom_density(aes(x=.data[[xVar]], linewidth=line_width, colour=.data[[gVar]]))
   } else if (num_var == 2) {
     p <- p + geom_point(aes(x=.data[[xVar]], y=.data[[yVar]], colour=.data[[gVar]]), alpha=point_transparency, size=point_size)
   }
   
-  p <- p + theme(axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
-                 axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
-                 axis.text.x = element_text(size = axis_tick_fontsize),
-                 axis.text.y = element_text(size = axis_tick_fontsize))
+
   
   if (!is.null(xVar)) p <- p + xlab(xVar)
   if (!is.null(yVar)) p <- p + ylab(yVar)
@@ -1099,7 +1125,8 @@ plotDecisionTree <- function(m, tree_num=1, nodeSize=4, nodeText=2, labelText=2,
 showClassifications <- function(allPreds, load_model, select_group, t_start=0, window=NULL,
                                 point_size = 1, point_transparency=1, line_width=1, cumulative=FALSE,
                                 axis_title_margin=12, axis_title_fontsize=12, axis_tick_fontsize=10, 
-                                legend_fontsize=12, border_col=NULL, background='white') {
+                                legend_fontsize=12, border_col=NULL, background='white', 
+                                export = FALSE, savefolder = NULL, plot_dims=c(8,6), plot_DPI=600) {
   
   sub <- subset(allPreds, allPreds[[groupVar]]==select_group)
   sub$GMTStart <- as.POSIXct(sub$GMTStart,
@@ -1151,19 +1178,29 @@ showClassifications <- function(allPreds, load_model, select_group, t_start=0, w
     window <- max(log$time)-t_start
   }
   
+  if (cumulative == FALSE) {
+    ymax <- 1
+    ylab1 <- 'Cumulative probability (%s)'
+  } else {
+    ymax <- max(sub[, load_model$classes], na.rm=TRUE)
+    ylab1 <- 'Classification probability (%s)'
+  }
+  
   p <- ggplot(data=log, aes(x=time, y=value, colour=label)) + 
     geom_line(lw=line_width, alpha=point_transparency) +
     geom_point(size=point_size, alpha=point_transparency) +
     xlim(c(t_start, (t_start+window))) + 
-    theme_bw() + 
+    ylim(c(0,ymax)) + 
     xlab('Time (sec)') +
-    ylab('Classification probability (%)') +
+    ylab(sprintf('%s', ylab1)) +
     labs(title=select_group) + 
     theme(legend.position = "top",
           legend.text = element_text(size = legend_fontsize),
           title.text = element_text(size = axis_title_fontsize),
-          legend.title = element_blank())
-  
+          legend.title = element_blank(),
+          panel.grid.major = element_line(colour = "grey90", linetype = "solid"),
+          panel.grid.minor = element_line(colour = "grey95", linetype = "solid")) 
+
   if (!is.null(background)) {
     p <- p + theme(
       panel.background = element_rect(fill = background),   # White background for the plotting panel
@@ -1182,14 +1219,38 @@ showClassifications <- function(allPreds, load_model, select_group, t_start=0, w
     p <- p + theme(panel.border = element_blank())
   }
   
-  p <- p + theme(axis.title.x = element_text(face = "bold", margin = margin(t = axis_title_margin), size=axis_title_fontsize),
-                 axis.title.y = element_text(face = "bold", margin = margin(r = axis_title_margin), size=axis_title_fontsize),
+  p <- p + theme(axis.title.x = element_text(face = "bold", margin = ggplot2::margin(t = axis_title_margin), size=axis_title_fontsize),
+                 axis.title.y = element_text(face = "bold", margin = ggplot2::margin(r = axis_title_margin), size=axis_title_fontsize),
                  axis.text.x = element_text(size = axis_tick_fontsize),
                  axis.text.y = element_text(size = axis_tick_fontsize))
   
   p <- p + scale_color_manual(values = final_palette)
   
   print(p)
+  
+  if (export==TRUE) {
+    if (is.null(savefolder)) {
+      dirName <- makeDirSysDT(create=FALSE)
+      if (!dir.exists(dirName)) { # Changed from !dirName %in% dir() to dir.exists() for robustness
+        dirName <- makeDirSysDT(create=TRUE)
+      }
+    } else {
+      dirName <- savefolder
+      if (!dir.exists(dirName)) { # Ensure the specified folder exists
+        dir.create(dirName, recursive = TRUE)
+      }
+    }
+    
+    figures_path <- sprintf('%s/figures', dirName)
+    if (!dir.exists(figures_path)) { # Changed from !'figures' %in% dir(dirName) to dir.exists()
+      dir.create(figures_path)
+    }
+    
+    ggsave(sprintf('%s/classifications_%s.png', figures_path, select_group), 
+           plot=p, width=plot_dims[1], height=plot_dims[2], units="cm", dpi=plot_DPI)
+    
+    }
+  
 }
 
 

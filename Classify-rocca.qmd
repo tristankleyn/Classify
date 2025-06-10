@@ -11,7 +11,7 @@ editor: visual
 
 ## ℹ️ About this notebook:
 
-This is a Quarto notebook composed of a mix of markdown and R code, designed to facilitate development of acoustic classifier models from output .csv files exported by the ROCCA (Real-time Odontocete Call Classification Algorithm) module in PAMGuard. This specific format is currently the only one usable for this notebook.
+This is a Quarto notebook composed of a mix of markdown and R code, designed to facilitate development of acoustic classifier models from output .csv files exported by the ROCCA (Real-time Odontocete Call Classification Algorithm) module in PAMGuard. This specific format is currently the only one usable for this notebook. While it is not a pre-requisite for using this notebook, some familiarity with programming in R will help to better understand how to use this script and adjust parameters. A crash course on basic R concepts can be found [here](https://cran.r-project.org/doc/contrib/Paradis-rdebuts_en.pdf).
 
 **With this notebook, you can:**
 
@@ -25,13 +25,15 @@ This is a Quarto notebook composed of a mix of markdown and R code, designed to 
 
 -   Apply saved Random Forest classifiers to predict new data
 
-Throughout the notebook, there are many parameters that can be adjusted to tailor the analysis to your specific needs. Any line of code that is adjustable is denoted with this green square 🟩. It is advised to not adjust any code without a green square beside it. Different parameters involve different types of inputs. For example, the code cell below contains two adjustable parameters, one a binary variable (TRUE or FALSE) and one a character variable (any text input surrounded quotation marks). Code cells can be run by clicking the green triangle in the top right-hand corner. Try running the code cell below.
+Throughout the notebook, there are parameters that can be adjusted to tailor the analysis to your specific needs. Any line of code that is adjustable in this way is denoted with this green square 🟩. It is advised to not adjust lines of code without a green square beside them. Different parameters involve different types of inputs. For example, the code cell below contains two adjustable parameters, one a binary variable (TRUE or FALSE) and one a character variable (any text input surrounded quotation marks). Code cells can be run by clicking the green triangle in the top right-hand corner.
+
+**Try running the code cell below and adjusting its parameters to see changes in its output.**
 
 ```{r}
 x <- 'cows are black and white.'
 
 INSERT <- 'Some' #🟩
-print_sentence <- FALSE #🟩
+print_sentence <- TRUE #🟩
 
 if (print_sentence) {
   cat(paste(INSERT, x))
@@ -40,11 +42,32 @@ if (print_sentence) {
 
 The following "Setting up" section contains a code cell where general parameters used throughout the notebook can be adjusted. Look out for 🟩 symbols elsewhere for opportunities to tailor the analysis. Explanations for some parameters are provided within this notebook, while descriptions of all adjustable parameters can be found [here](https://github.com/tristankleyn/ClassifyStuff/tree/master).
 
+❕ **IMPORTANT: Your IDE (RStudio, VS Code, etc.) will likely prompt you to install or update packages prior to using this script. You must do this in order for the script to run correctly. To check whether the required packages are installed on your system, run the cell below:**
+
+```{r}
+packages_to_install <- readLines('requirements.txt')
+packages_to_install <- packages_to_install[nchar(packages_to_install) > 0]
+packages_to_install <- packages_to_install[!grepl("^#", packages_to_install)]
+
+# Loop through the packages, install if not present
+for (pkg in packages_to_install) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    message(paste("Package '", pkg, "' not found. Installing now...", sep = ""))
+    install.packages(pkg, dependencies = TRUE)
+    message(paste("Package '", pkg, "' installed successfully.", sep = ""))
+  } else {
+    message(paste("Package '", pkg, "' is already installed.", sep = ""))
+  }
+}
+
+message("\nAll specified packages have been checked. Missing packages were installed.")
+```
+
 ------------------------------------------------------------------------
 
 ## ⚙️ Setting up
 
-The first steps for this analysis are to source the functions needed for the analysis and to read in your .csv formatted data.
+Once you've confirmed that you have required packages installed, you are ready to set up the notebook for the analysis. The first steps are to source the functions needed for the analysis and to read in your .csv formatted data.
 
 **Run the cell below to source required functions:**
 
@@ -55,7 +78,7 @@ The first steps for this analysis are to source the functions needed for the ana
 suppressWarnings(source('Classify-rocca_functions.R'))
 ```
 
-**Set your plotting aesthetics by adjusting the parameters listed in the code cell below:**
+**Use this cell below to customize aesthetics for plots (see** [here](https://github.com/tristankleyn/ClassifyStuff/tree/master) **for definitions):**
 
 ```{r}
 #GENERAL PLOT SETTINGS
@@ -77,8 +100,8 @@ tree_node_fontsize <- 4 #🟩
 
 #EXPORT SETTINGS
 export <- FALSE #🟩
-savefolder <- 'results04062025-1' #🟩
-plot_dims <- c(8,6) #🟩
+savefolder <- NULL #🟩
+plot_dims <- c(10,7) #🟩
 plot_DPI <- 600 #🟩
 
 
@@ -89,6 +112,8 @@ plot_DPI <- 600 #🟩
 
 You can either load your data from a nested hierarchy of folders containing RoccaContourStats .csv files or from one single RoccaContourStats .csv files. The former option is useful for grouping your data by different categories (e.g. encounters, locations, recordings). If loading data from a single .csv file, the only categorical variables available for analysis will be the EncounterNumber and KnownSpecies stored within the .csv itself. Below is an example of how you can structure a nested hierarchy of .csv files to preserve different types of categorical information in your data:
 
+![](img01.PNG){fig-align="center" width="459"}
+
 Before reading in your data using the code below, make sure you specify the following variables:
 
 -   **root_directory** \| folder where your data is located. [Example:]{.underline} "C:/Users/Bob/Desktop/Data"
@@ -96,10 +121,6 @@ Before reading in your data using the code below, make sure you specify the foll
 -   **from_folders** \| set as TRUE or FALSE to indicate whether or not your .csv data is stored in a hierarchical folder structure like the example above.
 
 -   **levels** \| vector of labels for each folder level in your hierarchical structure. If **from_folders** is FALSE, this will default to using the "KnownSpecies" and "EncounterID" variables in your .csv data.
-
--   **startVar** \| name of the first variable (in terms of column number) in your data. [Example]{.underline}: "FREQMAX"
-
--   **endVar** \| name of the last variable in your data. [Example:]{.underline} "STEPDUR".
 
 -   **omitVars** \| vector of variables to omit from the analysis. [Example:]{.underline} "DURATION".
 
@@ -147,13 +168,9 @@ The following parameters can be adjusted:
 
 -   **targetVar** \| variable to color-code plot by (grouping variable)
 
--   **alpha** \| transparency of scatter points (0-1)
+-   **axis_title_names** \| optional variable for labelling x and y axes manually e.g. c('BW (Hz)', 'Freq (Hz)')
 
--   **size** \| size of scatter points
-
--   **export** \| save plots to folder (TRUE or FALSE)
-
--   **resultsFolder** \| specific folder to save plots to. To create new folder, leave resultsFolder as NULL.
+-   **legend_names** \| optional variable for naming targetVar labels manually e.g. c('Species A', 'Species B')
 
 ```{r}
 #| fig-height: 7 #🟩
@@ -164,20 +181,20 @@ targetVar <- 'species' #🟩
 
 dataPlot(d = allData, 
          variables = list('x' = VARIABLE1, 'y' = VARIABLE2, 'group' = targetVar),
-         point_size = point_size, 
-         point_transparency = point_transparency, 
-         line_width = line_width, 
-         axis_title_names = c('Start Frequency (Hz)', 'End Frequency (Hz)'),
-         axis_title_fontsize = 16,
-         axis_title_margin = 12,
-         axis_tick_fontsize = 13,
-         legend_fontsize = 14,
-         legend_names = c('Common', 'Pilot whale', 'Bottlenose'),
-         border_col = NULL,
-         export = TRUE, 
-         savefolder = savefolder,
-         plot_dims = c(16,12),
-         plot_DPI = plot_DPI)
+         point_size = point_size, #🟩
+         point_transparency = point_transparency, #🟩
+         line_width = line_width, #🟩
+         axis_title_names = NULL, #🟩
+         axis_title_fontsize = 16, #🟩
+         axis_title_margin = 12, #🟩
+         axis_tick_fontsize = 13, #🟩
+         legend_fontsize = 14, #🟩
+         legend_names = NULL, #🟩
+         border_col = border_col, #🟩
+         export = export,  #🟩
+         savefolder = savefolder, #🟩
+         plot_dims = plot_dims, #🟩
+         plot_DPI = plot_DPI) #🟩
 ```
 
 ------------------------------------------------------------------------
@@ -196,9 +213,11 @@ dataPlot(d = allData,
 
 -   **minScore** \| minimum decision score (0-1) for keeping individual classifications (see supplementary information for more detail). [Example:]{.underline} 0.05
 
--   **select** \| vector of select groups to restrict training and testing to (leave as c() to not select any). [Example:]{.underline} c("Location1", "Location2")
+-   **selectGroups** \| vector of select groups to restrict training and testing to (leave as c() to not select any). [Example:]{.underline} c("Location1", "Location2")
 
--   **omit** \| list of categories for any hierarchical level in data to exclude from classifier training and testing. [Example:]{.underline} list('species'=c('SpeciesA"), 'location'=c('Location2", "Location3"))
+-   **omitGroups** \| vector of select groups to exclude from classifier training and testing. [Example:]{.underline} list('species'=c('SpeciesA"), 'location'=c('Location2", "Location3"))
+
+Running the cell below will initiate an iterative process for training and testing classifiers, where each loop of this process involves creating a test set consisting entirely of data from the same group (i.e. a level of your **groupVar** variable) and training set consisting of data not from the test group. A Random Forest classifier is then fitted to the training set and tested on the test set, with the predictions stored before proceeding to the next iteration. A running output shows test groups by their true and predicted labels, with the decision score shown in parentheses.
 
 ```{r}
 #| warning: false
@@ -216,10 +235,17 @@ nTrees <- 500 #🟩
 mTry <- NULL #🟩
 nodeSize <- 25 #🟩
 
-info <- classifyData(allData, vars=variables, targetVar=targetVar, 
-                     groupVar=groupVar, nMax=nMax, prune=pruneTrain, 
-                     nTrees=nTrees, mtry=mTry, node_size=nodeSize,
-                     minScore=minScore, select_groups=selectGroups, 
+info <- classifyData(allData, 
+                     vars=variables, 
+                     targetVar=targetVar, 
+                     groupVar=groupVar, 
+                     nMax=nMax, 
+                     prune=pruneTrain, 
+                     nTrees=nTrees,
+                     mtry=mTry, 
+                     node_size=nodeSize,
+                     minScore=minScore, 
+                     select_groups=selectGroups, 
                      omit=omitGroups)
 
 
@@ -247,26 +273,26 @@ summResults(groupPreds, targetVar=targetVar, minScore=minGroupScore)
 
 **Visualize classifier performance by running the below cell.**
 
-The three output panels here show different aspect of the classification results. The first (left) panel shows variable importance in terms of Gini impurity decrease of the 15 most important variables used by the model. The second (middle) panel shows a scatter plot of classification accuracy against the % of predictions discarded using increasing minimum decision score thresholds. The third (right) panel shows overall accuracy, mean accuracy, and % of predictions classified at increasing minimum decision score thresholds.
+The three output panels here show different aspect of the classification results. The first (left) panel shows variable importance in terms of Gini impurity decrease of the 15 most important variables used by the model. The second (middle) panel shows a scatter plot of classification accuracy against the % of predictions discarded using increasing minimum decision score thresholds. The third (right) panel shows overall accuracy, mean accuracy, and % of predictions classified at increasing minimum decision score thresholds. Overall accuracy is the percent of correct classifications out of total classifications, while mean accuracy is the mean of the percentages of correct classification across all distinct levels of your target variable (e.g. species).
 
 ```{r}
 #| fig-height: 6 #🟩
 #| fig-width: 9 #🟩
 
 plot_info <- plotResults(groupPreds, allPreds,
-                         model=model, targetVar=targetVar, thrMax=0.10,
-                         point_size=3, 
-                         point_transparency=0.8,
-                         line_width=line_width,
-                         axis_title_fontsize=14,
-                         axis_title_margin=12,
-                         axis_tick_fontsize=12,
-                         legend_fontsize=14,
-                         border_col = NULL,
-                         export = TRUE,
-                         savefolder = savefolder,
-                         plot_dims = c(16,12),
-                         plot_DPI = 600)
+                         model=model, targetVar=targetVar, thrMax = 0.10,
+                         point_size=3, #🟩
+                         point_transparency=0.8, #🟩
+                         line_width=line_width, #🟩
+                         axis_title_fontsize=14, #🟩
+                         axis_title_margin=12, #🟩
+                         axis_tick_fontsize=12, #🟩
+                         legend_fontsize=14, #🟩
+                         border_col = NULL, #🟩
+                         export = TRUE, #🟩
+                         savefolder = savefolder, #🟩
+                         plot_dims = c(16,12), #🟩
+                         plot_DPI = 600) #🟩
 
 ```
 
@@ -297,8 +323,24 @@ for (index in trees_to_plot) {
 
 ## 🔎 Apply saved classifiers to new data
 
+Once a classifier is created and saved in .rds format., it can be used to classify new data. Use the code cell below to load in new data from RoccaContourStats.csv files in the same way as previously, using either a hierarchical folder structure (**from_folders** **\<- TRUE**) or a single .csv file (**from_folders** **\<- FALSE**). As with the previous data loading step, there is an option to filter the data loaded by conditions specified by **filterVars_min** and **filterVars_max**.
+
+-   **data_dir** \| base directory containing your new data, either in a nested structure of subfolders or a single RoccaContourStats.csv file.
+
+-   **from_folders** \| set as TRUE or FALSE to indicate whether or not your .csv data is stored in a hierarchical folder structure like the example above.
+
+-   **levels** \| vector of labels for each folder level in your hierarchical structure. If **from_folders** is FALSE, this will default to using the "KnownSpecies" and "EncounterID" variables in your .csv data.
+
+-   **omitVars** \| vector of variables to omit from the analysis. [Example:]{.underline} "DURATION".
+
+-   **filterVars_min** \| list of minimum limits for selected variables. Enclose variable names in quotation marks or apostrophes. [Example:]{.underline} list("DURATION"=0.1, "FREQMEAN"=1000, "FREQRANGE"=500)
+
+-   **filterVars_max** \| list of maximum limits for selected variables. Enclose variable names in quotation marks or apostrophes. [Example:]{.underline} list("DURATION"=5.0, "FREQMEAN"=25000, "FREQRANGE"=15000)
+
+Running the cell below will output a summary of your new dataset.
+
 ```{r}
-data_dir <- 'pamguard/detections060625'
+data_dir <- 'pamguard/detections060625' #🟩
 from_folders <- TRUE #🟩
 levels <- c('location', 'recording') #🟩
 
@@ -318,12 +360,22 @@ allData <- info[[1]]
 variables <- info[[2]]
 ```
 
-```{r}
-load_model <- readRDS('results04062025-1/classifier.rds')
+Next, specify the path to the saved .rds classifier model for classifying new data.
 
+-   **groupVar** \| variable for grouping data prior to classification.
+
+-   **minGroupScore** \| minimum decision score below which classifications are discarded.
+
+-   **selectGroups** \| vector of select groups to restrict classification to.
+
+-   **omitGroups** \| vector of select groups to exclude from classification.
+
+```{r}
 # CLASSIFY NEW DATA
+load_model <- readRDS('myResults/classifier.rds') #🟩
+
 groupVar <- 'recording' #🟩
-minScore <- 0.0 #🟩
+minGroupScore <- 0.0 #🟩
 selectGroups <- c() #🟩
 omitGroups <- list() #🟩
 
@@ -332,7 +384,7 @@ info <- classifyData(allData,
                      targetVar = NULL, 
                      load_model = load_model,
                      groupVar = groupVar, 
-                     minScore = minScore, 
+                     minScore = minGroupScore, 
                      select_groups = selectGroups, 
                      omit = omitGroups)
 
@@ -343,13 +395,20 @@ model <- info$model
 data.table(groupPreds)
 ```
 
+Visualize classification results for **select_groups** or all groups (leave **select_groups** empty) in the data. The code cell below plots classification probabilities by species over time within each group of detections data. A different plot will be made for each group and shown in a separate output panel. Each point in a plot represents the probability that a classified detection belongs to the species indicated by its color (i.e. vertically aligned points are probabilities of different species for the same detection, adding to 1 if not cumulative).
+
+-   **select_groups** \| vector of groups to show classification results for (leave empty to show all)
+
+-   **cumulative** \| show cumulative classification probabilities by species (TRUE or FALSE)
+
 ```{r}
 #| warning: false
 #| message: false
 #| fig-height: 4 #🟩
 #| fig-width: 8 #🟩
 
-select_groups <- NULL #🟩
+select_groups <- c() #🟩
+cumulative <- FALSE
 
 if (is.null(select_groups)) {
   select_groups <- unique(allPreds[[groupVar]])
@@ -359,7 +418,7 @@ for (select_group in select_groups) {
   showClassifications(allPreds,
                     load_model = load_model,
                     select_group = select_group,
-                    cumulative = TRUE,
+                    cumulative = cumulative,
                     point_size = 2.5,
                     point_transparency = 0.5,
                     line_width = line_width,
@@ -368,7 +427,31 @@ for (select_group in select_groups) {
                     axis_tick_fontsize = 13,
                     legend_fontsize = 14,
                     border_col = border_col,
-                    background = background)
+                    background = background,
+                    export = TRUE,
+                    savefolder = savefolder,
+                    plot_dims = plot_dims,
+                    plot_DPI = plot_DPI)
 }
 
 ```
+
+------------------------------------------------------------------------
+
+## ❔ FAQs
+
+**What are classifiers trained to classify groups of data and not individual data points?**
+
+While visualizations and metrics focus on group (i.e. encounter) classification performance, group classifications are merely the averages of all individual classifications within a group. In other words, the classifiers are classifying individual detections before averaging them by group. Averaging leverages larger amounts of information for classification and is often shown to improve results.
+
+**What is a decision score?**
+
+When a classifier predicts a label (i.e. species) for a given data point (i.e. detection), what it is really doing is outputting a single probability (0 to 1) for each possible label. These probabilities always add up to 1 (e.g. 0.24 for A, 0.15 for B, and 0.61 for C). While the label with the highest probability is considered the classified label, the individual probabilities carry informaton regarding the strength of each classification. The decision score is the product of two different metrics: the first is the highest individual probability in a classification (i.e. the probability of the classified label) and the second is the difference in probabilities between the classified label and the second-most-likely label.
+
+**I am getting "no matching files found" when trying to load my data.**
+
+The most likely cause for this is that the **root_directory** that you are specifying either does not exist or does not contain data in the correct format. The fix for the former is to double-check the path of the root directory, which should be located in the same folder as this script. If this directory does exist, then your data is probably not saved in the correct format for loading. Detections from PAMGuard ROCCA need to be saved in RoccaContourStats.csv files and if you are setting **from_folders** to be TRUE, then these .csv files need to be stored in a nested structure of folders where each level is specified with a label as defined by the variable **levels.** If **from_folders** is FALSE and you are storing all your detections in a single RoccaContourStats.csv file, this file should be saved in your **root_directory** folder.
+
+**Why do my exported figures look different from how they look in the notebook output?**
+
+Figures may appear different after being exported due to how you set the plot dimensions **(plot_dims)** and plot dots-per-inch **(plot_DPI)**, as well as how you set figure height and width **(#\| fig-height and #\|fig-width)** in notebook cells. If the content in your plot appears too large in your saved .PNG file, try increasing the dimensions for export.

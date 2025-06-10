@@ -74,7 +74,10 @@ summVars <- function(data, hierarchy, vars) {
   print(output_dt)
 }
 
-loadDataFromHier <- function(root_path, startVar, endVar, vocType, from_folders=FALSE, levels=NULL, omitVars=c(), filterVarsMin=c(), filterVarsMax=c(), file_pattern='RoccaContourStats', file_type='csv', show_output=TRUE) {
+loadDataFromHier <- function(root_path, startVar, endVar, vocType, from_folders=FALSE, 
+                             levels=NULL, subsetting=NULL, omitVars=c(), 
+                             filterVarsMin=c(), filterVarsMax=c(), 
+                             file_pattern='RoccaContourStats', file_type='csv', show_output=TRUE) {
   all_data <- list()
   if (vocType %in% c('whistle', 'whistles', 'Whistles', 'Whistle')) {
     startVar <- 'FREQMAX'
@@ -123,13 +126,23 @@ loadDataFromHier <- function(root_path, startVar, endVar, vocType, from_folders=
       rownames(meta_df) <- 1:nrow(meta_df)
     }
     
+    meta_df$species <- meta_df$KnownSpecies
+    meta_df$encounter <- meta_df$EncounterID
+    
+    if (!is.null(subsetting)) {
+      if (length(subsetting) > 0) {
+        for (subset_var in names(subsetting)) {
+          meta_df <- subset(meta_df, meta_df[[subset_var]] %in% subsetting[subset_var])
+          rownames(meta_df) <- 1:nrow(meta_df)
+        }
+      }
+    }
+    
     if (show_output == TRUE) {
       summVars(meta_df, hierarchy_levels, vars)
       summData(meta_df, hierarchy_levels)
     }
     
-    meta_df$species <- meta_df$KnownSpecies
-    meta_df$encounter <- meta_df$EncounterID
     information <- list(meta_df, vars)
     return(information)
     
@@ -210,16 +223,26 @@ loadDataFromHier <- function(root_path, startVar, endVar, vocType, from_folders=
         rownames(meta_df) <- 1:nrow(meta_df)
       }
       
+      original <- nrow(meta_df)
+      if (!is.null(subsetting)) {
+        if (length(subsetting) > 0) {
+          for (subset_var in names(subsetting)) {
+            meta_df <- subset(meta_df, meta_df[[subset_var]] %in% unlist(subsetting[subset_var][1]))
+            rownames(meta_df) <- 1:nrow(meta_df)
+          }
+        }
+      }
+      
       if (show_output == TRUE) {
         summVars(meta_df, hierarchy_levels, vars)
         summData(meta_df, hierarchy_levels)
       }
       
-      original <- nrow(meta_df)
       meta_df <- meta_df %>% drop_na()
       dropped_rows <- original - nrow(meta_df)
       information <- list(meta_df, vars)
       return(information)
+      
     } else {
       cat("No matching files found.\n")
       return(NULL)

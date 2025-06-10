@@ -11,19 +11,19 @@ editor: visual
 
 ## ℹ️ About this notebook:
 
-This is a Quarto notebook composed of a mix of markdown and R code, designed to facilitate development of acoustic classifier models from output .csv files exported by the ROCCA (Real-time Odontocete Call Classification Algorithm) module in PAMGuard. This specific format is currently the only one usable for this notebook. While it is not a pre-requisite for using this notebook, some familiarity with programming in R will help to better understand how to use this script and adjust parameters. A crash course on basic R concepts can be found [here](https://cran.r-project.org/doc/contrib/Paradis-rdebuts_en.pdf).
+This is a Quarto notebook composed of a mix of markdown and R code, designed to facilitate development of acoustic classifier models from output .csv files exported by the ROCCA (Real-time Odontocete Call Classification Algorithm) module in PAMGuard. This specific format is currently the only one usable for this notebook. While it is not a pre-requisite for using this notebook, some familiarity with programming in R will help to better understand how to use this script and adjust parameters. A crash course on basic R concepts can be found [here](https://cran.r-project.org/doc/contrib/Paradis-rdebuts_en.pdf) and an [❔ FAQs/Troubleshooting] section is available at the bottom of the script to assist with common issues.
 
-**With this notebook, you can:**
+**This notebook is divided into the following sections:**
 
--   Load and compile ROCCA acoustic measurements for whistle and click detections in PAMGuard.
+-   [⚙️ Setting up] / adjust general settings and load in your ROCCA data
 
--   Visualize your acoustic data by different ROCCA variables and data groupings.
+-   [📊 Explore your data] / visualize your loaded data, export data plots
 
--   Train and test acoustic classifiers for any target variable (e.g. species, location)
+-   [🚀 Train and test classifier models] / train and test Random Forest classifier models
 
--   Save data tables, figures, and Random Forest classifier models (.rds)
+-   [🔎 Apply saved classifiers to new data] / use saved classifiers on new ROCCA data
 
--   Apply saved Random Forest classifiers to predict new data
+-   [❔ FAQs/Troubleshooting] / common issues and fixes
 
 Throughout the notebook, there are parameters that can be adjusted to tailor the analysis to your specific needs. Any line of code that is adjustable in this way is denoted with this green square 🟩. It is advised to not adjust lines of code without a green square beside them. Different parameters involve different types of inputs. For example, the code cell below contains two adjustable parameters, one a binary variable (TRUE or FALSE) and one a character variable (any text input surrounded quotation marks). Code cells can be run by clicking the green triangle in the top right-hand corner.
 
@@ -122,6 +122,8 @@ Before reading in your data using the code below, make sure you specify the foll
 
 -   **levels** \| vector of labels for each folder level in your hierarchical structure. If **from_folders** is FALSE, this will default to using the "KnownSpecies" and "EncounterID" variables in your .csv data.
 
+-   **subset** \| optional list for subsetting the dataset, where vectors within list contain levels of specified variables to include in subset. [Example]{.underline}: list('species'=c('Species A', 'Species'B), 'location'='Timbuktu')
+
 -   **omitVars** \| vector of variables to omit from the analysis. [Example:]{.underline} "DURATION".
 
 -   **filterVars_min** \| list of minimum limits for selected variables. Enclose variable names in quotation marks or apostrophes. [Example:]{.underline} list("DURATION"=0.1, "FREQMEAN"=1000, "FREQRANGE"=500)
@@ -136,6 +138,7 @@ This cell provides output in two different panels, which you can click between. 
 root_directory <- "UKData" #🟩
 from_folders <- TRUE #🟩
 levels <- c('species', 'location', 'encounter', 'recording') #🟩
+subset <- NULL
 
 vocType = 'whistle' #🟩
 omitVars <- c('DCQUARTER1MEAN', 'DCQUARTER2MEAN', 'DCQUARTER3MEAN',
@@ -145,7 +148,8 @@ filterVars_min <- list() #🟩
 filterVars_max <- list() #🟩
 
 info <- loadDataFromHier(root_directory, from_folders=from_folders, 
-                         levels=levels, vocType=vocType, omitVars=omitVars,
+                         levels=levels, subsetting = subset, 
+                         vocType=vocType, omitVars=omitVars,
                          filterVarsMin = filterVars_min,
                          filterVarsMax = filterVars_max)
 
@@ -213,9 +217,7 @@ dataPlot(d = allData,
 
 -   **minScore** \| minimum decision score (0-1) for keeping individual classifications (see supplementary information for more detail). [Example:]{.underline} 0.05
 
--   **selectGroups** \| vector of select groups to restrict training and testing to (leave as c() to not select any). [Example:]{.underline} c("Location1", "Location2")
-
--   **omitGroups** \| vector of select groups to exclude from classifier training and testing. [Example:]{.underline} list('species'=c('SpeciesA"), 'location'=c('Location2", "Location3"))
+-   **omitGroups** \| vector of select groups (levels of **groupVar**) to exclude from classifier training and testing. [Example:]{.underline} c('encounter001', 'encounter002')
 
 Running the cell below will initiate an iterative process for training and testing classifiers, where each loop of this process involves creating a test set consisting entirely of data from the same group (i.e. a level of your **groupVar** variable) and training set consisting of data not from the test group. A Random Forest classifier is then fitted to the training set and tested on the test set, with the predictions stored before proceeding to the next iteration. A running output shows test groups by their true and predicted labels, with the decision score shown in parentheses.
 
@@ -228,8 +230,7 @@ groupVar <- 'encounter' #🟩
 nMax <- 25 #🟩
 pruneTrain <- 0 #🟩
 minScore <- 0.02 #🟩
-selectGroups <- c() #🟩
-omitGroups <- list() #🟩
+omitGroups <- c() #🟩
 
 nTrees <- 500 #🟩
 mTry <- NULL #🟩
@@ -245,7 +246,6 @@ info <- classifyData(allData,
                      mtry=mTry, 
                      node_size=nodeSize,
                      minScore=minScore, 
-                     select_groups=selectGroups, 
                      omit=omitGroups)
 
 
@@ -438,7 +438,7 @@ for (select_group in select_groups) {
 
 ------------------------------------------------------------------------
 
-## ❔ FAQs
+## ❔ FAQs/Troubleshooting
 
 **What are classifiers trained to classify groups of data and not individual data points?**
 

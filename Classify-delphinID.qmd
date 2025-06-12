@@ -13,15 +13,17 @@ editor: visual
 
 This is a Quarto notebook of markdown and R code for developing and testing delphinID acoustic classifier models through transfer learning techniques. Required for this is a .sqlite3 database containing delphinID classifications of detections made in PAMGuard with the Whistle & Moan Detector and/or Click Detector.
 
-**With this notebook, you can:**
+For more information, head to <https://github.com/tristankleyn/ClassifyStuff/tree/master>.
 
--   Load and compile delphinID classifications of PAMGuard detections.
+**Classify-delphinID is divided into the following sections:**
 
--   Retrain a delphinID classifier on new prediction labels.
+-   [⚙️ Setting up] / load delphinID classifications from your PAMGuard database
 
--   Apply a saved classifier to predict new data.
+-   \[Train and test delphinID classifier models\] / retrain delphinID classifiers on new prediction labels
 
-Throughout the notebook, there are many parameters that can be adjusted to tailor the analysis to your specific needs. Any line of code that is adjustable is denoted with this green square 🟩. It is advised to not adjust any code without a green square beside it. Different parameters involve different types of inputs. For example, the code cell below contains two adjustable parameters, one a binary variable (TRUE or FALSE) and one a character variable (any text input surrounded quotation marks). Code cells can be run by clicking the green triangle in the top right-hand corner. **Try running the code cell below.**
+Throughout the notebook, there are many parameters that can be adjusted to tailor the analysis to your specific needs. Any line of code that is adjustable is denoted with this green square 🟩. It is advised to not adjust any code without a green square beside it. Different parameters involve different types of inputs. For example, the code cell below contains two adjustable parameters, one a binary variable (TRUE or FALSE) and one a character variable (any text input surrounded quotation marks). Code cells can be run by clicking the green triangle in the top right-hand corner.
+
+**Try running the code cell below and adjusting its parameters to see changes in its output.**
 
 ```{r}
 a <- 'chicken' #🟩
@@ -35,6 +37,27 @@ if (print_sentence) {
 ```
 
 The following "Setting up" section contains a code cell where general parameters used throughout the notebook can be adjusted. Look out for 🟩 symbols elsewhere for opportunities to tailor the analysis. Explanations for some parameters are provided within this notebook, while descriptions of all adjustable parameters can be found [here](https://github.com/tristankleyn/ClassifyStuff/tree/master).
+
+❕ **IMPORTANT: Your IDE (RStudio, VS Code, etc.) will likely prompt you to install or update packages prior to using this script. You must do this in order for the script to run correctly. To check whether the required packages are installed on your system, run the cell below:**
+
+```{r}
+packages_to_install <- readLines('requirements-delphinID.txt')
+packages_to_install <- packages_to_install[nchar(packages_to_install) > 0]
+packages_to_install <- packages_to_install[!grepl("^#", packages_to_install)]
+
+# Loop through the packages, install if not present
+for (pkg in packages_to_install) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    message(paste("Package '", pkg, "' not found. Installing now...", sep = ""))
+    install.packages(pkg, dependencies = TRUE)
+    message(paste("Package '", pkg, "' installed successfully.", sep = ""))
+  } else {
+    message(paste("Package '", pkg, "' is already installed.", sep = ""))
+  }
+}
+
+message("\nAll specified packages have been checked. Missing packages were installed.")
+```
 
 ------------------------------------------------------------------------
 
@@ -58,7 +81,7 @@ source('Classify-delphinID_functions.R')
 -   **wTable** \| name of database table containing delphinID whistle classifications
 
 ```{r}
-selectDB <- 'pamguard/dcl0206.sqlite3' #🟩
+selectDB <- 'N1106.sqlite3' #🟩
 classifierType <- 'delphinID'
 model <- readRDS(sprintf('EventClassifier_%s.rds', classifierType))
 
@@ -98,7 +121,7 @@ minWhistles <- 0 #🟩
 AndOr <- 'or' #🟩
 dateRange <- NULL #🟩
 export <- TRUE #🟩
-append_to_file <- 'groupClassifications-0906251608'
+append_to_file <- NULL
 verbose <- FALSE #🟩
 
 
@@ -129,11 +152,36 @@ map <- plotClassifications(predInfo$preds,
                            evScore = evScore,
                            plotType = 'Map') #🟩
    
+data.table(predInfo$preds)
 ```
 
 ------------------------------------------------------------------------
 
-## 🚀 Train a new delphinID classifier
+The two outputs produced by the code cell above are a PCA plot and a table, both showing all events classified. PCA coordinates are calculated from event feature vectors (i.e. barcodes in the table), while colours indicate predicted species and number labels in the scatter plot refer to the unique identifier (UID) values of different acoustic events, which match the UID values in the table. The table provides various pieces of information about each event classification:
+
+-   **uid** \| unique identifier
+
+-   **eventID** \| name of classified recording file
+
+-   **clicks** \| number of click predictions (not individual clicks)
+
+-   **whistles** \| number of whistle predictions (not individual whistles)
+
+-   **minutes** \| difference in time from first to last prediction in file
+
+-   **predictedSpecies** \| classified (most probable) species based on click and whistle predictions
+
+-   **score** \| decision score of classification (product of decision confidence and prominence)
+
+-   **prom** \| decision prominence of classification (difference in probability between most and second-most likely species)
+
+-   **conf** \| decision confidence of classification (probability of most likely species)
+
+-   **barcode** \| 24-digit code representing feature vector for event classification
+
+-   **De. delphis, etc.** \| event classification probability for *Delphinus delphis* or other species
+
+## 🚀 Train and test delphinID classifiers
 
 Run the code cell below to show a list of *groupClassifications* .csv files saved in the *classifications* folder.
 
@@ -172,11 +220,11 @@ For example, you could add columns representing the true species label, recordin
 If **plotData** is set as TRUE, the code cell below will output a PCA plot showing event classifications color-coded by target variable level. The PCA is based on the twelve predictor variables used by delphinID, which represent event-level whistle and click classification probabilities for the set of Northeast Atlantic species the original delphinID models were trained for.
 
 ```{r}
-filename <- 'groupClassifications-0906251608' #🟩
-targetVar <- 'label' #🟩
-groupVar <- 'eventID' #🟩
-minClicks <- 0 #🟩
-minWhistles <- 0 #🟩
+filename <- 'groupClassifications-1106252225' #🟩
+targetVar <- 'species' #🟩
+groupVar <- 'encID' #🟩
+minClicks <- 5 #🟩
+minWhistles <- 3#🟩
 AndOr <- 'or' #🟩
 
 info <- loadResults(filename, 
@@ -217,14 +265,11 @@ Finally, use the code cell below to train a new Random Forest classifier model o
 The code will output a confusion matrix table of event classifications, which shows true labels along the vertical axis and predicted labels along the horizontal axis. Counts (and percentages in parentheses) given in the table indicate correct classifications (along the diagonal) and incorrect classifications (off the diagonal).
 
 ```{r}
-library(randomForest)
-
 mtry <- NULL #🟩
 nodeSize <- 5 #🟩
 nTrees <- 1000 #🟩
 imputeTrain <- 0 #🟩
-pruneTrain <- 0 #🟩
-minGroupScore <- 0.02 #🟩
+pruneTrain <- 0.0 #🟩
 
 results <- trainClassifier(data_cmb, vars, 
                            targetVar = targetVar, 
@@ -238,5 +283,10 @@ results <- trainClassifier(data_cmb, vars,
                            export = FALSE, #🟩
                            savefolder = savefolder) #🟩
 
+
+```
+
+```{r}
+minGroupScore <- 0.25 #🟩
 summResults(results, targetVar=targetVar, minScore=minGroupScore)
 ```

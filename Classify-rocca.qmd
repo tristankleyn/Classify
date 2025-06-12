@@ -13,7 +13,9 @@ editor: visual
 
 This is a Quarto notebook composed of a mix of markdown and R code, designed to facilitate development of acoustic classifier models from output .csv files exported by the ROCCA (Real-time Odontocete Call Classification Algorithm) module in PAMGuard. This specific format is currently the only one usable for this notebook. While it is not a pre-requisite for using this notebook, some familiarity with programming in R will help to better understand how to use this script and adjust parameters. A crash course on basic R concepts can be found [here](https://cran.r-project.org/doc/contrib/Paradis-rdebuts_en.pdf) and an [❔ FAQs/Troubleshooting] section is available at the bottom of the script to assist with common issues.
 
-**This notebook is divided into the following sections:**
+For more information, head to <https://github.com/tristankleyn/ClassifyStuff/tree/master>.
+
+**Classify-rocca is divided into the following sections:**
 
 -   [⚙️ Setting up] / adjust general settings and load in your ROCCA data
 
@@ -45,7 +47,7 @@ The following "Setting up" section contains a code cell where general parameters
 ❕ **IMPORTANT: Your IDE (RStudio, VS Code, etc.) will likely prompt you to install or update packages prior to using this script. You must do this in order for the script to run correctly. To check whether the required packages are installed on your system, run the cell below:**
 
 ```{r}
-packages_to_install <- readLines('requirements.txt')
+packages_to_install <- readLines('requirements-rocca.txt')
 packages_to_install <- packages_to_install[nchar(packages_to_install) > 0]
 packages_to_install <- packages_to_install[!grepl("^#", packages_to_install)]
 
@@ -313,7 +315,7 @@ for (index in trees_to_plot) {
                                 show_plot=FALSE,
                                 export = TRUE,
                                 savefolder = savefolder,
-                                plot_dims = c(8,6),
+                                plot_dims = c(14,10),
                                 plot_DPI = 600)
 }
 
@@ -340,7 +342,7 @@ Once a classifier is created and saved in .rds format., it can be used to classi
 Running the cell below will output a summary of your new dataset.
 
 ```{r}
-data_dir <- 'pamguard/detections060625' #🟩
+data_dir <- 'detections060625' #🟩
 from_folders <- TRUE #🟩
 levels <- c('location', 'recording') #🟩
 
@@ -442,15 +444,15 @@ for (select_group in select_groups) {
 
 **What are classifiers trained to classify groups of data and not individual data points?**
 
-While visualizations and metrics focus on group (i.e. encounter) classification performance, group classifications are merely the averages of all individual classifications within a group. In other words, the classifiers are classifying individual detections before averaging them by group. Averaging leverages larger amounts of information for classification and is often shown to improve results.
+While visualizations and metrics focus on group (i.e. encounter) classification performance, group classifications are merely the averages of all individual classifications within a group. In other words, the classifiers [are]{.underline} classifying individual detections before averaging them by group. Averaging leverages larger amounts of information for classification and is often shown to improve results.
 
 **What is a decision score?**
 
-When a classifier predicts a label (i.e. species) for a given data point (i.e. detection), what it is really doing is outputting a single probability (0 to 1) for each possible label. These probabilities always add up to 1 (e.g. 0.24 for A, 0.15 for B, and 0.61 for C). While the label with the highest probability is considered the classified label, the individual probabilities carry informaton regarding the strength of each classification. The decision score is the product of two different metrics: the first is the highest individual probability in a classification (i.e. the probability of the classified label) and the second is the difference in probabilities between the classified label and the second-most-likely label.
+When a classifier predicts a label (i.e. species) for a given data point (i.e. detection), what it is really doing is outputting a single probability (0 to 1) for each possible label. These probabilities always add up to 1 (e.g. 0.24 for A, 0.15 for B, and 0.61 for C). While the label with the highest probability is considered the classified label, the individual probabilities carry information regarding the likelihood of each label. The decision score of a classification is the product of two different metrics: the first is the highest individual probability in a classification (i.e. the probability of the classified label) and the second is the difference in probabilities between the classified label and the second-most-likely label.
 
 **I am getting "no matching files found" when trying to load my data.**
 
-The most likely cause for this is that the **root_directory** that you are specifying either does not exist or does not contain data in the correct format. The fix for the former is to double-check the path of the root directory, which should be located in the same folder as this script. If this directory does exist, then your data is probably not saved in the correct format for loading. Detections from PAMGuard ROCCA need to be saved in RoccaContourStats.csv files and if you are setting **from_folders** to be TRUE, then these .csv files need to be stored in a nested structure of folders where each level is specified with a label as defined by the variable **levels.** If **from_folders** is FALSE and you are storing all your detections in a single RoccaContourStats.csv file, this file should be saved in your **root_directory** folder.
+The most likely cause for this is that the **root_directory** that you are specifying either does not exist or does not contain data in the correct format. The fix for the former is to double-check the path of the root directory, which should be located in the same folder as this script. If this directory does exist, then your data is probably not saved in the correct format for loading. Detections from PAMGuard ROCCA need to be saved in RoccaContourStats.csv files and if you are setting **from_folders** as TRUE, then these .csv files need to be stored in a nested structure of folders where each level is specified with a label as defined by the variable **levels.** If **from_folders** is FALSE and you are storing all your detections in a single RoccaContourStats.csv file, this file should be saved in your **root_directory** folder.
 
 **Why do my exported figures look different from how they look in the notebook output?**
 

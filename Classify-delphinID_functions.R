@@ -134,7 +134,7 @@ processdataRocca <- function(db_con, dateRange, verbose=TRUE) {
             evDur <- as.numeric(seconds(difftime(sub$UTC[dim(sub)[1]], sub$UTC[1])))*60/60
             xtest$startUTC <- sub$UTC[1]
             xtest$endUTC <- sub$UTC[dim(sub)[1]]
-            xtest$minutes <- evDur
+            xtest$minutes <- evDur/60
             xtest$eventID <- str_trim(as.character(evID))
             xtest$clicks <- dim(dfc)[1]
             xtest$whistles <- dim(dfw)[1]
@@ -395,7 +395,7 @@ processdataDelphinID <- function(db_con, dateRange, ctable=NULL, wtable=NULL, ra
         
         xtest$startUTC <- startT
         xtest$endUTC <- endT
-        xtest$minutes <- evDur
+        xtest$minutes <- evDur/60
         xtest$eventID <- str_trim(as.character(evID))
         xtest$clicks <- nc
         xtest$whistles <- nw
@@ -985,4 +985,4 @@ summResults <- function(df, targetVar, minScore=0, digits = 2) {
   cat(sprintf('Highest: %s (%s)', round(highAcc, 3), highGroup))
 }
 
-cat('Done loading functions.\n')
+cat('\u2713 Done loading functions.\n')

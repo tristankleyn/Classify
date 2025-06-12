@@ -1,0 +1,14 @@
+rvest
+janitor
+dbplyr
+RSQLite
+DBI
+lubridate
+stringr
+data.table
+randomForest
+ggplot2
+scales
+dplyr
+tidyr
+jsonlite
